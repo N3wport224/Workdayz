@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AtsScoreMeter } from "@/components/AtsScoreMeter";
 import { hasProfile, loadProfile } from "@/lib/storage";
+import { upsertApplication } from "@/lib/applications";
 import {
   fetchPdfAsBase64,
   onExtensionDetected,
@@ -27,11 +28,18 @@ export default function ApplyPage() {
   const [error, setError] = useState<string | null>(null);
   const [extensionPresent, setExtensionPresent] = useState(false);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const applicationIdRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     setProfile(loadProfile());
     const offExt = onExtensionDetected(setExtensionPresent);
-    const offJob = onScrapedJob((scraped) => setJob(scraped));
+    const offJob = onScrapedJob((scraped) => {
+      setJob(scraped);
+      applicationIdRef.current = crypto.randomUUID();
+      setResult(null);
+      setSaved(false);
+    });
     return () => {
       offExt();
       offJob();
@@ -44,6 +52,7 @@ export default function ApplyPage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setSaved(false);
     try {
       const res = await fetch("/api/tailor", {
         method: "POST",
@@ -52,8 +61,27 @@ export default function ApplyPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Tailoring failed.");
-      setResult(data as TailorResult);
-      setCoverLetter((data as TailorResult).coverLetter);
+      const tailored = data as TailorResult;
+      setResult(tailored);
+      setCoverLetter(tailored.coverLetter);
+
+      const now = new Date().toISOString();
+      upsertApplication({
+        id: applicationIdRef.current,
+        status: "draft",
+        createdAt: now,
+        updatedAt: now,
+        job,
+        contact: profile.contact,
+        summary: tailored.tailoredResume.summary,
+        skills: tailored.tailoredResume.skills,
+        experience: mergedExperience(profile, tailored),
+        education: profile.education,
+        certifications: profile.certifications,
+        coverLetterText: tailored.coverLetter,
+        atsScore: tailored.atsScore,
+      });
+      setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -152,10 +180,7 @@ export default function ApplyPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">
       <div>
-        <Link href="/" className="text-sm text-blue-600 dark:text-blue-400">
-          &larr; Back
-        </Link>
-        <h1 className="text-2xl font-bold mt-2">Tailor an application</h1>
+        <h1 className="text-2xl font-bold">Tailor an application</h1>
         <p className="text-sm opacity-70 mt-1">
           Paste the job posting from Workday (or let the browser extension scrape it for you), then
           generate a tailored resume and cover letter.
@@ -227,6 +252,8 @@ export default function ApplyPage() {
         {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
       </form>
 
+      {loading ? <ResultSkeleton /> : null}
+
       {result ? (
         <div className="space-y-6">
           <AtsScoreMeter ats={result.atsScore} />
@@ -288,9 +315,28 @@ export default function ApplyPage() {
             </button>
           </div>
           {handoffStatus ? <p className="text-sm opacity-80">{handoffStatus}</p> : null}
+          {saved ? (
+            <p className="text-xs opacity-60">
+              Saved to your{" "}
+              <Link href="/applications" className="text-blue-600 dark:text-blue-400">
+                application tracker
+              </Link>
+              .
+            </p>
+          ) : null}
         </div>
       ) : null}
     </main>
+  );
+}
+
+function ResultSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse" aria-hidden>
+      <div className="h-24 rounded-lg bg-black/5 dark:bg-white/10" />
+      <div className="h-40 rounded-lg bg-black/5 dark:bg-white/10" />
+      <div className="h-32 rounded-lg bg-black/5 dark:bg-white/10" />
+    </div>
   );
 }
 

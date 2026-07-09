@@ -78,6 +78,36 @@ export interface TailorResult {
   atsScore: AtsScoreBreakdown;
 }
 
+export type ApplicationStatus = "draft" | "applied" | "interviewing" | "rejected" | "offer";
+
+export const APPLICATION_STATUSES: ApplicationStatus[] = [
+  "draft",
+  "applied",
+  "interviewing",
+  "rejected",
+  "offer",
+];
+
+// A saved snapshot of a tailored application, for the /applications tracker.
+// Deliberately does not store the rendered PDFs (could bloat localStorage
+// across many applications) — those are regenerated on demand from this
+// snapshot via /api/resume-pdf and /api/cover-letter-pdf.
+export interface SavedApplication {
+  id: string;
+  status: ApplicationStatus;
+  createdAt: string;
+  updatedAt: string;
+  job: JobPosting;
+  contact: ContactInfo;
+  summary: string;
+  skills: string[];
+  experience: (WorkExperience & { bullets: string[] })[];
+  education: EducationEntry[];
+  certifications: string[];
+  coverLetterText: string;
+  atsScore: AtsScoreBreakdown;
+}
+
 // The package handed off to the browser extension for autofilling Workday.
 export interface AutofillPackage {
   version: 1;

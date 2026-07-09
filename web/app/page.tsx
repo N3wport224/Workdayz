@@ -10,15 +10,15 @@ export default function Home() {
         Workday application for a final review before you submit.
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Link
           href="/profile"
           className="rounded-lg border border-black/10 dark:border-white/15 p-5 hover:border-blue-500 transition-colors"
         >
           <h2 className="font-semibold mb-1">1. Set up your resume</h2>
           <p className="text-sm opacity-70">
-            Enter your real work history once. This is the ground truth every tailored resume is
-            built from.
+            Paste an existing resume to import it, or enter your work history once. This is the
+            ground truth every tailored resume is built from.
           </p>
         </Link>
         <Link
@@ -29,6 +29,16 @@ export default function Home() {
           <p className="text-sm opacity-70">
             Paste a job posting, review the tailored resume, cover letter, and ATS score, then send
             it to Workday.
+          </p>
+        </Link>
+        <Link
+          href="/applications"
+          className="rounded-lg border border-black/10 dark:border-white/15 p-5 hover:border-blue-500 transition-colors"
+        >
+          <h2 className="font-semibold mb-1">3. Track your applications</h2>
+          <p className="text-sm opacity-70">
+            Every tailored application is saved automatically. Track status from draft through
+            offer.
           </p>
         </Link>
       </div>

@@ -52,8 +52,26 @@ npm run build                 # outputs to extension/dist
 ```
 
 Then load `extension/dist` as an unpacked extension (see
-`extension/README.md`), fill out your resume at `/profile`, and tailor your
-first application at `/apply`.
+`extension/README.md`), fill out your resume at `/profile` (paste an
+existing resume to auto-import it), and tailor your first application at
+`/apply`. Every tailored application is saved to `/applications` so you can
+track its status over time.
+
+## Features
+
+- **Resume import** — paste your existing resume as text and Claude
+  structures it into the profile fields for you.
+- **Tailoring** — resume summary/skills/bullets rewritten per job posting,
+  plus a matching cover letter, without inventing experience.
+- **ATS scoring** — deterministic keyword-coverage score with formatting
+  feedback and an integrity check on anything the model added.
+- **ATS-safe PDFs** — single-column, text-based, no tables/images.
+- **Application tracker** — every tailored application is saved
+  automatically; track status from draft through offer.
+- **Workday autofill** — browser extension fills contact fields, uploads the
+  resume/cover letter, and fills as many work-experience/education panels as
+  are already on the page, re-scanning automatically as Workday's SPA
+  navigates between steps.
 
 ## Safety notes
 

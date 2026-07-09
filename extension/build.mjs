@@ -1,5 +1,5 @@
 import * as esbuild from "esbuild";
-import { mkdirSync, copyFileSync, rmSync } from "fs";
+import { mkdirSync, copyFileSync, cpSync, rmSync } from "fs";
 
 const watch = process.argv.includes("--watch");
 
@@ -26,6 +26,7 @@ const builds = [
 
 copyFileSync("manifest.json", "dist/manifest.json");
 copyFileSync("src/popup/popup.html", "dist/popup/popup.html");
+cpSync("icons", "dist/icons", { recursive: true });
 
 if (watch) {
   const ctxs = await Promise.all(builds.map((b) => esbuild.context(b)));

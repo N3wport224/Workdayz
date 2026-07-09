@@ -78,19 +78,67 @@ export function findFieldBySynonyms(
   synonyms: string[],
   { onlyEmpty = true }: { onlyEmpty?: boolean } = {},
 ): FillableElement | null {
-  let best: { el: FillableElement; score: number } | null = null;
-  for (const el of fields) {
-    if (onlyEmpty && !isEmpty(el)) continue;
+  return findAllFieldsBySynonyms(fields, synonyms, { onlyEmpty })[0] ?? null;
+}
+
+/** Same matching as findFieldBySynonyms, but returns every match ordered by
+ * relevance — used to locate one anchor field per repeated panel (e.g. one
+ * "Job Title" field per work-experience entry). */
+export function findAllFieldsBySynonyms(
+  fields: FillableElement[],
+  synonyms: string[],
+  { onlyEmpty = true }: { onlyEmpty?: boolean } = {},
+): FillableElement[] {
+  const matches: { el: FillableElement; score: number; index: number }[] = [];
+  fields.forEach((el, index) => {
+    if (onlyEmpty && !isEmpty(el)) return;
     const label = labelForElement(el);
-    if (!label) continue;
+    if (!label) return;
     for (const syn of synonyms) {
       const needle = normalize(syn);
-      if (label.includes(needle) && needle.length > (best?.score ?? 0)) {
-        best = { el, score: needle.length };
+      if (label.includes(needle)) {
+        matches.push({ el, score: needle.length, index });
+        break;
       }
     }
+  });
+  matches.sort((a, b) => b.score - a.score || a.index - b.index);
+  return matches.map((m) => m.el);
+}
+
+/**
+ * Walks up from `anchor` to find the smallest ancestor that also encloses at
+ * least one other field from `fields` — a best-effort way to find the
+ * boundary of a single repeated panel (e.g. one job entry) without relying
+ * on tenant-specific markup.
+ */
+export function findPanelContainer(anchor: HTMLElement, fields: FillableElement[]): HTMLElement {
+  let el: HTMLElement | null = anchor.parentElement;
+  let best: HTMLElement = anchor.parentElement ?? anchor;
+  for (let depth = 0; depth < 8 && el; depth++) {
+    const enclosed = fields.filter((f) => el!.contains(f)).length;
+    if (enclosed >= 2) {
+      best = el;
+      if (enclosed >= 6) break; // large enough to be the whole panel
+    }
+    el = el.parentElement;
   }
-  return best?.el ?? null;
+  return best;
+}
+
+export function findCheckboxBySynonyms(container: ParentNode, synonyms: string[]): HTMLInputElement | null {
+  const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+  for (const el of checkboxes) {
+    if (el.disabled) continue;
+    const label = labelForElement(el);
+    if (synonyms.some((s) => label.includes(normalize(s)))) return el;
+  }
+  return null;
+}
+
+export function setCheckbox(el: HTMLInputElement, checked: boolean): void {
+  if (el.checked === checked) return;
+  el.click();
 }
 
 /** Sets a value through the element's native setter so framework-controlled

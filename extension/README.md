@@ -11,8 +11,9 @@ the step you're currently on.
 
 ```bash
 npm install
-npm run build      # outputs to dist/
-npm run watch       # rebuild on change, for development
+npm run build            # outputs to dist/
+npm run watch             # rebuild on change, for development
+npm run generate-icons     # regenerate icons/*.png (only needed if you edit the icon script)
 ```
 
 ## Load it in Chrome / Edge
@@ -55,10 +56,18 @@ fuzzy, synonym-based matching against each field's label (via `<label>`,
 This means:
 - It generally handles the flat "My Information" contact fields (name,
   email, phone, address) and resume/cover-letter file uploads well.
-- Repeatable multi-entry sections (work history, education) are **not**
-  auto-expanded/added in this version — if your tenant's application form
-  has an "Add" button for each job, you'll still need to click Add yourself
-  and fill or copy-paste entries beyond what's already visible on the page.
+- Repeatable multi-entry sections (work history, education) are filled
+  **best-effort**: it fills however many panels are *already rendered* on
+  the page, matched to your profile entries in order, but it does not click
+  "Add Another" itself. If you have more entries than visible panels, the
+  autofill summary tells you how many more to add — click "Add Another Work
+  Experience"/"Add Another Education" yourself, then re-run autofill to fill
+  the newly added panel(s).
+- The extension re-scans the page automatically as Workday's SPA transitions
+  between a job posting and the application form (via a `MutationObserver` +
+  patched History API), so you generally don't need to reload the tab. It
+  also runs in all frames in case a tenant embeds the apply flow in an
+  iframe.
 - Some tenants use custom domains that don't match `*.myworkdayjobs.com` —
   if the widget doesn't appear on your company's application pages, add
   your tenant's domain to `host_permissions` and the `content_scripts`
