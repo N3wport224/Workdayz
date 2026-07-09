@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Workdayz</title>
+    <style>
+      body {
+        width: 300px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        padding: 14px;
+        color: #111827;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 10px;
+      }
+      section {
+        margin-bottom: 14px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      section:last-child {
+        border-bottom: none;
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        opacity: 0.7;
+        margin-bottom: 4px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px 8px;
+        font-size: 12px;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        margin-bottom: 6px;
+      }
+      button {
+        width: 100%;
+        font-size: 12px;
+        font-weight: 600;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #e5e7eb;
+        color: #111827;
+      }
+      #status,
+      #autofillStatus {
+        font-size: 12px;
+        opacity: 0.85;
+        margin-top: 6px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Workdayz</h1>
+
+    <section>
+      <label for="webAppUrl">Web app URL</label>
+      <input id="webAppUrl" type="text" placeholder="http://localhost:3000" />
+      <button id="connectBtn">Connect</button>
+      <div id="connectStatus"></div>
+    </section>
+
+    <section>
+      <button id="openAppBtn" class="secondary">Open Workdayz web app</button>
+      <div id="status">Loading current application...</div>
+    </section>
+
+    <section>
+      <button id="autofillBtn">Autofill active tab</button>
+      <div id="autofillStatus"></div>
+    </section>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

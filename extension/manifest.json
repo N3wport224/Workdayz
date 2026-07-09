@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Workdayz — Job Application Autofill",
+  "version": "0.1.0",
+  "description": "Autofills Workday job applications from a resume/cover letter tailored by the Workdayz web app. Runs in your logged-in browser session; stops before the final Submit step.",
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Workdayz"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "scripting", "activeTab"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": [
+    "*://*.myworkdayjobs.com/*",
+    "*://*.workday.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.myworkdayjobs.com/*", "*://*.workday.com/*"],
+      "js": ["content/workday.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

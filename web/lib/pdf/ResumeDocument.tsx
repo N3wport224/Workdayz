@@ -1,0 +1,131 @@
+import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import type { ContactInfo, EducationEntry, WorkExperience } from "@/lib/types";
+
+// ATS-safe layout: single column, standard built-in font, plain text only —
+// no tables, images, text boxes, or multi-column sections that resume
+// parsers commonly choke on.
+const styles = StyleSheet.create({
+  page: {
+    fontFamily: "Helvetica",
+    fontSize: 10.5,
+    lineHeight: 1.35,
+    padding: 36,
+    color: "#111111",
+  },
+  name: { fontSize: 18, fontFamily: "Helvetica-Bold", marginBottom: 2 },
+  contactLine: { fontSize: 9.5, color: "#333333", marginBottom: 10 },
+  sectionHeading: {
+    fontSize: 11,
+    fontFamily: "Helvetica-Bold",
+    textTransform: "uppercase",
+    borderBottom: "1 solid #111111",
+    marginTop: 12,
+    marginBottom: 6,
+    paddingBottom: 2,
+  },
+  paragraph: { marginBottom: 4 },
+  entryHeader: { fontFamily: "Helvetica-Bold", fontSize: 10.5 },
+  entrySubheader: { fontSize: 9.5, color: "#333333", marginBottom: 3 },
+  bullet: { marginBottom: 2, paddingLeft: 10 },
+  entryBlock: { marginBottom: 8 },
+});
+
+export interface ResumePdfProps {
+  contact: ContactInfo;
+  summary: string;
+  skills: string[];
+  experience: (WorkExperience & { bullets: string[] })[];
+  education: EducationEntry[];
+  certifications: string[];
+}
+
+export function ResumeDocument({
+  contact,
+  summary,
+  skills,
+  experience,
+  education,
+  certifications,
+}: ResumePdfProps) {
+  const contactParts = [
+    contact.email,
+    contact.phone,
+    [contact.city, contact.state].filter(Boolean).join(", "),
+    contact.linkedin,
+    contact.website,
+  ].filter(Boolean);
+
+  return (
+    <Document>
+      <Page size="LETTER" style={styles.page}>
+        <Text style={styles.name}>
+          {contact.firstName} {contact.lastName}
+        </Text>
+        <Text style={styles.contactLine}>{contactParts.join(" | ")}</Text>
+
+        {summary ? (
+          <View>
+            <Text style={styles.sectionHeading}>Summary</Text>
+            <Text style={styles.paragraph}>{summary}</Text>
+          </View>
+        ) : null}
+
+        {skills.length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Skills</Text>
+            <Text style={styles.paragraph}>{skills.join(" | ")}</Text>
+          </View>
+        ) : null}
+
+        {experience.length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Experience</Text>
+            {experience.map((exp) => (
+              <View key={exp.id} style={styles.entryBlock} wrap={false}>
+                <Text style={styles.entryHeader}>
+                  {exp.title} — {exp.company}
+                </Text>
+                <Text style={styles.entrySubheader}>
+                  {[exp.location, `${exp.startDate} - ${exp.endDate}`]
+                    .filter(Boolean)
+                    .join(" | ")}
+                </Text>
+                {exp.bullets.map((b, i) => (
+                  <Text key={i} style={styles.bullet}>
+                    • {b}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {education.length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Education</Text>
+            {education.map((ed) => (
+              <View key={ed.id} style={styles.entryBlock} wrap={false}>
+                <Text style={styles.entryHeader}>
+                  {ed.degree}
+                  {ed.fieldOfStudy ? `, ${ed.fieldOfStudy}` : ""}
+                </Text>
+                <Text style={styles.entrySubheader}>
+                  {[ed.school, `${ed.startDate} - ${ed.endDate}`, ed.gpa ? `GPA: ${ed.gpa}` : ""]
+                    .filter(Boolean)
+                    .join(" | ")}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        {certifications.length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Certifications</Text>
+            <Text style={styles.paragraph}>{certifications.join(" | ")}</Text>
+          </View>
+        ) : null}
+      </Page>
+    </Document>
+  );
+}
