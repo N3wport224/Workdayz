@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import type { JobPosting, ResumeProfile } from "@/lib/types";
-import { tailorApplication } from "@/lib/tailor";
+import { tailorApplication, type TailorOptions } from "@/lib/tailor";
+import { COVER_LETTER_TONES } from "@/lib/tones";
 
 export async function POST(request: Request) {
-  let body: { profile?: ResumeProfile; job?: JobPosting };
+  let body: { profile?: ResumeProfile; job?: JobPosting; options?: TailorOptions };
   try {
     body = await request.json();
   } catch {
@@ -24,8 +25,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const options: TailorOptions = {};
+  if (body.options?.tone && body.options.tone in COVER_LETTER_TONES) {
+    options.tone = body.options.tone;
+  }
+  if (typeof body.options?.extraInstructions === "string") {
+    options.extraInstructions = body.options.extraInstructions.slice(0, 2000);
+  }
+  if (Array.isArray(body.options?.emphasisKeywords)) {
+    options.emphasisKeywords = body.options.emphasisKeywords
+      .filter((k): k is string => typeof k === "string")
+      .slice(0, 30);
+  }
+
   try {
-    const result = await tailorApplication(profile, job);
+    const result = await tailorApplication(profile, job, options);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Tailoring failed.";

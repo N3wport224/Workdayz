@@ -10,6 +10,19 @@ export const EXTENSION_READY_TYPE = "WORKDAYZ_EXTENSION_READY";
 export const AUTOFILL_PACKAGE_TYPE = "WORKDAYZ_AUTOFILL_PACKAGE";
 export const REQUEST_SCRAPED_JOB_TYPE = "WORKDAYZ_REQUEST_SCRAPED_JOB";
 export const SCRAPED_JOB_TYPE = "WORKDAYZ_SCRAPED_JOB";
+export const PACKAGE_STORED_TYPE = "WORKDAYZ_PACKAGE_STORED";
+
+/** Fires when the extension confirms it persisted an autofill package. */
+export function onPackageStored(callback: () => void) {
+  const handler = (event: MessageEvent) => {
+    if (event.source !== window) return;
+    if (event.data?.source === "workdayz-extension" && event.data?.type === PACKAGE_STORED_TYPE) {
+      callback();
+    }
+  };
+  window.addEventListener("message", handler);
+  return () => window.removeEventListener("message", handler);
+}
 
 export function onScrapedJob(callback: (job: JobPosting) => void) {
   const handler = (event: MessageEvent) => {

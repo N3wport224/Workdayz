@@ -8,9 +8,11 @@ import { upsertApplication } from "@/lib/applications";
 import {
   fetchPdfAsBase64,
   onExtensionDetected,
+  onPackageStored,
   onScrapedJob,
   sendPackageToExtension,
 } from "@/lib/extension-bridge";
+import { TONE_LABELS, type CoverLetterTone } from "@/lib/tones";
 import type { AutofillPackage, JobPosting, ResumeProfile, TailorResult } from "@/lib/types";
 
 const inputClass =
@@ -29,6 +31,8 @@ export default function ApplyPage() {
   const [extensionPresent, setExtensionPresent] = useState(false);
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [tone, setTone] = useState<CoverLetterTone>("professional");
+  const [extraInstructions, setExtraInstructions] = useState("");
   const applicationIdRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
@@ -40,14 +44,20 @@ export default function ApplyPage() {
       setResult(null);
       setSaved(false);
     });
+    const offStored = onPackageStored(() => {
+      setHandoffStatus(
+        "Package stored in the extension ✓ — open your Workday application tab and click “Autofill this step”.",
+      );
+    });
     return () => {
       offExt();
       offJob();
+      offStored();
     };
   }, []);
 
-  async function handleTailor(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleTailor(e: React.FormEvent | null, emphasisKeywords?: string[]) {
+    e?.preventDefault();
     if (!profile) return;
     setLoading(true);
     setError(null);
@@ -57,7 +67,11 @@ export default function ApplyPage() {
       const res = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, job }),
+        body: JSON.stringify({
+          profile,
+          job,
+          options: { tone, extraInstructions, emphasisKeywords },
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Tailoring failed.");
@@ -242,6 +256,31 @@ export default function ApplyPage() {
             required
           />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelClass}>Cover letter tone</label>
+            <select
+              className={inputClass}
+              value={tone}
+              onChange={(e) => setTone(e.target.value as CoverLetterTone)}
+            >
+              {(Object.keys(TONE_LABELS) as CoverLetterTone[]).map((t) => (
+                <option key={t} value={t}>
+                  {TONE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Extra instructions (optional)</label>
+            <input
+              className={inputClass}
+              value={extraInstructions}
+              onChange={(e) => setExtraInstructions(e.target.value)}
+              placeholder="e.g. emphasize my leadership experience"
+            />
+          </div>
+        </div>
         <button
           type="submit"
           disabled={loading}
@@ -257,6 +296,17 @@ export default function ApplyPage() {
       {result ? (
         <div className="space-y-6">
           <AtsScoreMeter ats={result.atsScore} />
+
+          {result.atsScore.missingKeywords.length > 0 ? (
+            <button
+              onClick={() => handleTailor(null, result.atsScore.missingKeywords)}
+              disabled={loading}
+              className="rounded-md border border-amber-500/50 text-amber-700 dark:text-amber-300 px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              ↻ Rewrite to target the {result.atsScore.missingKeywords.length} missed keyword
+              {result.atsScore.missingKeywords.length === 1 ? "" : "s"} (only where truthful)
+            </button>
+          ) : null}
 
           <section>
             <h2 className="text-lg font-semibold mb-2">Tailored resume preview</h2>

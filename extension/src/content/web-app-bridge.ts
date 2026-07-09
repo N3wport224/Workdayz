@@ -21,10 +21,16 @@ window.addEventListener("message", async (event: MessageEvent) => {
       break;
     }
     case MESSAGE_TYPES.autofillPackage: {
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         type: "STORE_AUTOFILL_PACKAGE",
         payload: data.payload as AutofillPackage,
       });
+      if (response?.ok) {
+        window.postMessage(
+          { source: "workdayz-extension", type: MESSAGE_TYPES.packageStored },
+          window.location.origin,
+        );
+      }
       break;
     }
     case MESSAGE_TYPES.requestScrapedJob: {

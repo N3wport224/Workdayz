@@ -7,6 +7,8 @@ const openAppBtn = document.getElementById("openAppBtn") as HTMLButtonElement;
 const statusEl = document.getElementById("status") as HTMLDivElement;
 const autofillBtn = document.getElementById("autofillBtn") as HTMLButtonElement;
 const autofillStatus = document.getElementById("autofillStatus") as HTMLDivElement;
+const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement;
+const clearStatus = document.getElementById("clearStatus") as HTMLDivElement;
 
 async function init() {
   const stored = await chrome.storage.local.get([STORAGE_KEYS.webAppOrigin, STORAGE_KEYS.autofillPackage]);
@@ -62,6 +64,12 @@ autofillBtn.addEventListener("click", async () => {
   } catch {
     autofillStatus.textContent = "Couldn't reach this tab — open a Workday application page first.";
   }
+});
+
+clearBtn.addEventListener("click", async () => {
+  await chrome.storage.local.remove([STORAGE_KEYS.autofillPackage, STORAGE_KEYS.scrapedJob]);
+  clearStatus.textContent = "Cleared. Your resume and job data are no longer stored in the extension.";
+  statusEl.textContent = "No tailored application yet — generate one in the web app.";
 });
 
 init();

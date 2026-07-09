@@ -74,6 +74,7 @@ export const MESSAGE_TYPES = {
   autofillPackage: "WORKDAYZ_AUTOFILL_PACKAGE",
   requestScrapedJob: "WORKDAYZ_REQUEST_SCRAPED_JOB",
   scrapedJob: "WORKDAYZ_SCRAPED_JOB",
+  packageStored: "WORKDAYZ_PACKAGE_STORED",
   ping: "WORKDAYZ_PING",
 } as const;
 
