@@ -30,8 +30,13 @@ function initJobPostingWidget() {
       return;
     }
     widget.setStatus(`Scraped "${job.title}". Opening the tailoring app...`);
-    await sendMessage({ type: "STORE_SCRAPED_JOB", payload: job });
-    await sendMessage({ type: "OPEN_APPLY_TAB" });
+    try {
+      await sendMessage({ type: "STORE_SCRAPED_JOB", payload: job });
+      await sendMessage({ type: "OPEN_APPLY_TAB" });
+    } catch {
+      // Extension was reloaded since this script was injected.
+      widget.setStatus("The extension was updated — reload this page and try again.");
+    }
   });
 }
 
@@ -64,7 +69,11 @@ function initApplicationFormWidget() {
 
   const runBtn = addButton(widget.root, "Autofill this step", async () => {
     runBtn.disabled = true;
-    await runAutofillNow(widget);
+    try {
+      await runAutofillNow(widget);
+    } catch {
+      widget.setStatus("The extension was updated — reload this page and try again.");
+    }
     runBtn.disabled = false;
   });
 }
@@ -92,25 +101,24 @@ function scheduleEvaluate() {
   debounceTimer = window.setTimeout(evaluate, 400);
 }
 
-const originalPushState = history.pushState.bind(history);
-history.pushState = (...args: Parameters<History["pushState"]>) => {
-  originalPushState(...args);
-  window.dispatchEvent(new Event("workdayz:navigation"));
-};
-
-const originalReplaceState = history.replaceState.bind(history);
-history.replaceState = (...args: Parameters<History["replaceState"]>) => {
-  originalReplaceState(...args);
-  window.dispatchEvent(new Event("workdayz:navigation"));
-};
+// NOTE: patching history.pushState here would be useless — content scripts
+// run in an isolated world, so the page's own History calls never touch our
+// patched copy. SPA transitions are caught by the MutationObserver instead
+// (any meaningful route change mutates the DOM), with popstate/hashchange
+// for browser-driven navigation.
 window.addEventListener("popstate", scheduleEvaluate);
-window.addEventListener("workdayz:navigation", scheduleEvaluate);
+window.addEventListener("hashchange", scheduleEvaluate);
 new MutationObserver(scheduleEvaluate).observe(document.body, { childList: true, subtree: true });
 
 // A popup-triggered autofill can arrive at any time regardless of whether
-// our own SPA-transition detection has caught up yet.
+// our own SPA-transition detection has caught up yet. This script runs in
+// every frame (all_frames), and Chrome resolves tabs.sendMessage with the
+// FIRST response from any frame — so only the frame that actually contains
+// the application form may respond, or an empty frame's "0 filled" answer
+// can shadow the real one.
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   if (message.type === "RUN_AUTOFILL") {
+    if (!looksLikeApplicationForm()) return false;
     sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }).then(({ pkg }) => {
       if (!pkg) {
         sendResponse({ filled: [], skipped: [], filesAttached: [] });

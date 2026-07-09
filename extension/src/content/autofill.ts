@@ -103,7 +103,9 @@ export function runAutofill(pkg: AutofillPackage): AutofillRunSummary {
     }
   }
 
-  const resumeInput = findFileInputBySynonyms(["resume", "cv", "upload resume"]);
+  const resumeInput = findFileInputBySynonyms(["resume", "cv", "upload resume"], {
+    allowSoleFallback: true,
+  });
   if (resumeInput) {
     attachFileToInput(resumeInput, pkg.resumePdfBase64, pkg.resumeFileName);
     summary.filesAttached.push("resume");

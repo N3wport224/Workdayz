@@ -15,6 +15,18 @@ window.addEventListener("message", async (event: MessageEvent) => {
   const data = event.data as { source?: string; type?: string; payload?: unknown };
   if (data?.source !== "workdayz-web") return;
 
+  // If the extension was reloaded/updated while this tab stayed open, this
+  // orphaned script's chrome.runtime calls throw "Extension context
+  // invalidated". Swallow it: the page will show "not detected" and the user
+  // reloads the tab, instead of an uncaught rejection and a silent failure.
+  try {
+    await handle(data);
+  } catch {
+    /* orphaned content script — no-op */
+  }
+});
+
+async function handle(data: { type?: string; payload?: unknown }) {
   switch (data.type) {
     case MESSAGE_TYPES.ping: {
       announceReady();
@@ -44,6 +56,6 @@ window.addEventListener("message", async (event: MessageEvent) => {
       break;
     }
   }
-});
+}
 
 announceReady();

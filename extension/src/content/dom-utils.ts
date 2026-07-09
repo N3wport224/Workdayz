@@ -164,7 +164,10 @@ export function setFieldValue(el: FillableElement, value: string): void {
   el.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
 }
 
-export function findFileInputBySynonyms(synonyms: string[]): HTMLInputElement | null {
+export function findFileInputBySynonyms(
+  synonyms: string[],
+  { allowSoleFallback = false }: { allowSoleFallback?: boolean } = {},
+): HTMLInputElement | null {
   const fileInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="file"]')).filter(
     (el) => !el.disabled,
   );
@@ -172,7 +175,11 @@ export function findFileInputBySynonyms(synonyms: string[]): HTMLInputElement | 
     const label = labelForElement(el) || normalize(el.closest("[data-automation-id]")?.textContent?.slice(0, 200) ?? "");
     if (synonyms.some((s) => label.includes(normalize(s)))) return el;
   }
-  return fileInputs[0] ?? null;
+  // Without a label match, only guess when there is exactly ONE file input on
+  // the page (the common Workday "drop your resume here" step). Guessing among
+  // several could attach the file to an unrelated upload field.
+  if (allowSoleFallback && fileInputs.length === 1) return fileInputs[0];
+  return null;
 }
 
 function base64ToBytes(base64: string): Uint8Array {
