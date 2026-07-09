@@ -18,6 +18,9 @@ export async function POST(request: Request) {
   if (!body?.contact?.firstName || !body?.bodyText) {
     return NextResponse.json({ error: "Missing cover letter data." }, { status: 400 });
   }
+  if (body.bodyText.length > 30_000) {
+    return NextResponse.json({ error: "Cover letter is too long to render." }, { status: 413 });
+  }
 
   try {
     const element = createElement(CoverLetterDocument, body) as Parameters<typeof renderToBuffer>[0];

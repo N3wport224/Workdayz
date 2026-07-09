@@ -23,7 +23,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "scripting", "activeTab"],
+  "permissions": ["storage", "scripting"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "host_permissions": [
     "*://*.myworkdayjobs.com/*",

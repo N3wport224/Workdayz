@@ -47,12 +47,15 @@ export function mountWidget(title: string): Widget {
       button:disabled { opacity: 0.5; cursor: default; }
     </style>
     <div class="panel">
-      <div class="title">${title}</div>
+      <div class="title" id="title"></div>
       <div class="status" id="status">Loading...</div>
       <div id="actions"></div>
     </div>
   `;
 
+  // textContent, not template interpolation — keeps this safe even if a
+  // future caller ever passes non-constant text.
+  shadow.getElementById("title")!.textContent = title;
   const statusEl = shadow.getElementById("status")!;
 
   return {

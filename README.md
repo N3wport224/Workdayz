@@ -87,6 +87,16 @@ track its status over time.
   present in your source resume; `web/lib/ats-score.ts` cross-checks the
   model's output against your original profile and flags anything it can't
   verify.
+- **Prompt-injection defenses.** Job descriptions and uploaded resumes are
+  third-party text that flows into LLM prompts; both prompts explicitly
+  instruct the model to treat that content as data and ignore instructions
+  embedded in it, and the deterministic ATS integrity check flags skills
+  that don't trace back to your source resume regardless of what the model
+  was talked into.
+- **Local, unauthenticated API.** The web app's API routes have no auth —
+  they're designed to run on localhost for one person. Don't deploy it to a
+  public host as-is; anyone who could reach it could spend your Anthropic
+  API credits.
 - **Company policy.** Automating form-filling in your own browser session is
   generally very different from running a headless bot against your
   employer's systems, but acceptable-use policies vary — check yours before

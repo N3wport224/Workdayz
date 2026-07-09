@@ -24,6 +24,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (job.description.length > 60_000) {
+    return NextResponse.json(
+      { error: "Job description is too long (max ~60k characters) — trim it to the relevant sections." },
+      { status: 413 },
+    );
+  }
 
   const options: TailorOptions = {};
   if (body.options?.tone && body.options.tone in COVER_LETTER_TONES) {
