@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ProfileForm } from "@/components/ProfileForm";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
-import { emptyProfile, loadProfile, saveProfile } from "@/lib/storage";
+import { emptyProfile, loadProfile, mergeProfile, saveProfile } from "@/lib/storage";
 import type { ResumeProfile } from "@/lib/types";
 
 export default function ProfilePage() {
@@ -41,7 +41,7 @@ export default function ProfilePage() {
       if (!parsed || typeof parsed !== "object" || !parsed.contact) {
         throw new Error("That file doesn't look like a Workdayz profile backup.");
       }
-      replaceProfile({ ...emptyProfile, ...parsed });
+      replaceProfile(mergeProfile(parsed));
       setBackupStatus("Profile restored from backup.");
     } catch (err) {
       setBackupStatus(err instanceof Error ? err.message : "Couldn't read that backup file.");

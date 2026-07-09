@@ -134,21 +134,26 @@ Hard rules:
     throw new Error("Model did not return a tailored application.");
   }
 
-  const input = toolUse.input as {
-    summary: string;
-    skills: string[];
-    experience: { id: string; bullets: string[] }[];
-    coverLetter: string;
-    keywords: string[];
-  };
+  // Normalize defensively — tool_choice forces the schema, but nothing
+  // guarantees the model used real experience ids or that optional-ish
+  // arrays came back as arrays.
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const strArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+
+  const input = toolUse.input as Record<string, unknown>;
+  const knownIds = new Set(profile.experience.map((e) => e.id));
+  const rawExperience = Array.isArray(input.experience) ? input.experience : [];
 
   const tailoredResume = {
-    summary: input.summary,
-    skills: input.skills,
-    experience: input.experience,
+    summary: str(input.summary),
+    skills: strArr(input.skills),
+    experience: rawExperience
+      .filter((e): e is { id: string; bullets: unknown } => knownIds.has((e as { id?: string })?.id ?? ""))
+      .map((e) => ({ id: e.id, bullets: strArr(e.bullets) })),
   };
 
-  const atsScore = computeAtsScore(input.keywords, tailoredResume, profile);
+  const atsScore = computeAtsScore(strArr(input.keywords), tailoredResume, profile);
 
-  return { tailoredResume, coverLetter: input.coverLetter, atsScore };
+  return { tailoredResume, coverLetter: str(input.coverLetter), atsScore };
 }

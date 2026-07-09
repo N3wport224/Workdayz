@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AtsScoreMeter } from "@/components/AtsScoreMeter";
 import { hasProfile, loadProfile } from "@/lib/storage";
-import { upsertApplication } from "@/lib/applications";
+import { getApplication, upsertApplication } from "@/lib/applications";
 import {
   fetchPdfAsBase64,
   onExtensionDetected,
@@ -34,6 +34,7 @@ export default function ApplyPage() {
   const [tone, setTone] = useState<CoverLetterTone>("professional");
   const [extraInstructions, setExtraInstructions] = useState("");
   const applicationIdRef = useRef<string>(crypto.randomUUID());
+  const lastJobKeyRef = useRef<string>("");
 
   useEffect(() => {
     setProfile(loadProfile());
@@ -41,6 +42,7 @@ export default function ApplyPage() {
     const offJob = onScrapedJob((scraped) => {
       setJob(scraped);
       applicationIdRef.current = crypto.randomUUID();
+      lastJobKeyRef.current = `${scraped.title}|${scraped.company}`;
       setResult(null);
       setSaved(false);
     });
@@ -59,6 +61,13 @@ export default function ApplyPage() {
   async function handleTailor(e: React.FormEvent | null, emphasisKeywords?: string[]) {
     e?.preventDefault();
     if (!profile) return;
+    // A different job (typed manually or scraped) gets its own tracker entry;
+    // re-tailoring/refining the same job updates the existing draft.
+    const jobKey = `${job.title}|${job.company}`;
+    if (jobKey !== lastJobKeyRef.current) {
+      applicationIdRef.current = crypto.randomUUID();
+      lastJobKeyRef.current = jobKey;
+    }
     setLoading(true);
     setError(null);
     setResult(null);
@@ -78,29 +87,36 @@ export default function ApplyPage() {
       const tailored = data as TailorResult;
       setResult(tailored);
       setCoverLetter(tailored.coverLetter);
-
-      const now = new Date().toISOString();
-      upsertApplication({
-        id: applicationIdRef.current,
-        status: "draft",
-        createdAt: now,
-        updatedAt: now,
-        job,
-        contact: profile.contact,
-        summary: tailored.tailoredResume.summary,
-        skills: tailored.tailoredResume.skills,
-        experience: mergedExperience(profile, tailored),
-        education: profile.education,
-        certifications: profile.certifications,
-        coverLetterText: tailored.coverLetter,
-        atsScore: tailored.atsScore,
-      });
+      persistSnapshot(tailored, tailored.coverLetter);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
     }
+  }
+
+  /** Saves/updates this application's tracker entry, preserving its original
+   * createdAt. Called after tailoring AND whenever the user exports or hands
+   * off, so edits made to the cover letter after tailoring aren't lost. */
+  function persistSnapshot(tailored: TailorResult, coverLetterText: string) {
+    if (!profile) return;
+    const now = new Date().toISOString();
+    upsertApplication({
+      id: applicationIdRef.current,
+      status: getApplication(applicationIdRef.current)?.status ?? "draft",
+      createdAt: getApplication(applicationIdRef.current)?.createdAt ?? now,
+      updatedAt: now,
+      job,
+      contact: profile.contact,
+      summary: tailored.tailoredResume.summary,
+      skills: tailored.tailoredResume.skills,
+      experience: mergedExperience(profile, tailored),
+      education: profile.education,
+      certifications: profile.certifications,
+      coverLetterText,
+      atsScore: tailored.atsScore,
+    });
   }
 
   async function downloadResumePdf() {
@@ -119,6 +135,7 @@ export default function ApplyPage() {
 
   async function downloadCoverLetterPdf() {
     if (!profile) return;
+    if (result) persistSnapshot(result, coverLetter);
     const { base64, fileName } = await fetchPdfAsBase64("/api/cover-letter-pdf", {
       contact: profile.contact,
       companyName: job.company,
@@ -131,6 +148,7 @@ export default function ApplyPage() {
 
   async function sendToExtension() {
     if (!profile || !result) return;
+    persistSnapshot(result, coverLetter);
     setHandoffStatus("Generating PDFs...");
     try {
       const merged = mergedExperience(profile, result);

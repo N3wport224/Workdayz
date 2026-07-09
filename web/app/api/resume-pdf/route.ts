@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { NextResponse } from "next/server";
 import { ResumeDocument, type ResumePdfProps } from "@/lib/pdf/ResumeDocument";
+import { safeFilenamePart } from "@/lib/safe-filename";
 
 export async function POST(request: Request) {
   let body: ResumePdfProps;
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${body.contact.firstName}_${body.contact.lastName}_Resume.pdf"`,
+        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Resume.pdf"`,
       },
     });
   } catch (err) {

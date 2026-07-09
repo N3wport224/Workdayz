@@ -5,6 +5,7 @@ import {
   CoverLetterDocument,
   type CoverLetterPdfProps,
 } from "@/lib/pdf/CoverLetterDocument";
+import { safeFilenamePart } from "@/lib/safe-filename";
 
 export async function POST(request: Request) {
   let body: CoverLetterPdfProps;
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${body.contact.firstName}_${body.contact.lastName}_Cover_Letter.pdf"`,
+        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Cover_Letter.pdf"`,
       },
     });
   } catch (err) {

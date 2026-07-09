@@ -25,12 +25,23 @@ export const emptyProfile: ResumeProfile = {
   certifications: [],
 };
 
+/** Merges a possibly-partial stored/imported profile onto the empty profile,
+ * deep-merging `contact` so every field the UI binds to is a real string. */
+export function mergeProfile(partial: Partial<ResumeProfile> | null | undefined): ResumeProfile {
+  if (!partial || typeof partial !== "object") return emptyProfile;
+  return {
+    ...emptyProfile,
+    ...partial,
+    contact: { ...emptyProfile.contact, ...(partial.contact ?? {}) },
+  };
+}
+
 export function loadProfile(): ResumeProfile {
   if (typeof window === "undefined") return emptyProfile;
   const raw = window.localStorage.getItem(PROFILE_KEY);
   if (!raw) return emptyProfile;
   try {
-    return { ...emptyProfile, ...JSON.parse(raw) } as ResumeProfile;
+    return mergeProfile(JSON.parse(raw));
   } catch {
     return emptyProfile;
   }
