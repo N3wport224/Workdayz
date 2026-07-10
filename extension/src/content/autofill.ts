@@ -1,9 +1,11 @@
 import type { AutofillPackage, AutofillRunSummary, EducationEntry, ExperienceEntry } from "../types";
 import {
   attachFileToInput,
+  fieldLabelText,
   fillListbox,
   findAllFieldsBySynonyms,
   findCheckboxBySynonyms,
+  findFieldByAllTerms,
   findFieldBySynonyms,
   findFileInputBySynonyms,
   findFillableFields,
@@ -36,6 +38,47 @@ const CURRENT_ROLE_SYNONYMS = ["current", "i currently work here", "present"];
 
 function isPresentDate(value: string): boolean {
   return /present|current/i.test(value);
+}
+
+const MONTH_NAMES = [
+  "january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december",
+];
+
+/** Accepts "2021-06", "06/2021", "June 2021", or bare "2021". */
+export function parseDateParts(value: string): { month?: string; year: string } | null {
+  const v = value.trim();
+  let m = v.match(/^(\d{4})[-/.](\d{1,2})$/);
+  if (m) return { year: m[1], month: String(Number(m[2])).padStart(2, "0") };
+  m = v.match(/^(\d{1,2})[-/.](\d{4})$/);
+  if (m) return { year: m[2], month: String(Number(m[1])).padStart(2, "0") };
+  m = v.match(/^([A-Za-z]+)\.?\s+(\d{4})$/);
+  if (m) {
+    const idx = MONTH_NAMES.findIndex((name) => name.startsWith(m![1].toLowerCase()));
+    if (idx >= 0) return { year: m[2], month: String(idx + 1).padStart(2, "0") };
+  }
+  m = v.match(/^(\d{4})$/);
+  if (m) return { year: m[1] };
+  return null;
+}
+
+/**
+ * Workday date widgets are usually split Month/Year inputs
+ * (dateSectionMonth-input / dateSectionYear-input) under a labeled group.
+ * Fill those when present; return false so the caller can fall back to a
+ * plain text field.
+ */
+function fillDateParts(scoped: FillableElement[], groupSynonym: string, value: string): boolean {
+  const parsed = parseDateParts(value);
+  if (!parsed) return false;
+  const yearField = findFieldByAllTerms(scoped, [groupSynonym, "year"]);
+  if (!yearField) return false;
+  setFieldValue(yearField, parsed.year);
+  if (parsed.month) {
+    const monthField = findFieldByAllTerms(scoped, [groupSynonym, "month"]);
+    if (monthField) setFieldValue(monthField, parsed.month);
+  }
+  return true;
 }
 
 function fillWithinPanel(
@@ -126,17 +169,29 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
     summary.filesAttached.push("cover letter");
   }
 
+  // Some tenants ask for the cover letter as a textarea instead of a file.
+  const coverLetterTextarea = findFieldBySynonyms(
+    fields.filter((f) => f instanceof HTMLTextAreaElement),
+    ["cover letter"],
+  );
+  if (coverLetterTextarea && pkg.coverLetterText) {
+    setFieldValue(coverLetterTextarea, pkg.coverLetterText);
+    summary.filled.push("cover letter text");
+  }
+
   const experienceResult = fillRepeatedSection(pkg.experience, TITLE_SYNONYMS, (panel, entry, scoped) => {
     fillWithinPanel(panel, scoped, [
       [TITLE_SYNONYMS, entry.title],
       [COMPANY_SYNONYMS, entry.company],
       [["location", "city"], entry.location],
-      [["start date"], entry.startDate],
     ]);
+    if (!fillDateParts(scoped, "start date", entry.startDate)) {
+      fillWithinPanel(panel, scoped, [[["start date"], entry.startDate]]);
+    }
     if (isPresentDate(entry.endDate)) {
       const checkbox = findCheckboxBySynonyms(panel, CURRENT_ROLE_SYNONYMS);
       if (checkbox) setCheckbox(checkbox, true);
-    } else {
+    } else if (!fillDateParts(scoped, "end date", entry.endDate)) {
       fillWithinPanel(panel, scoped, [[["end date"], entry.endDate]]);
     }
     const description = findFieldBySynonyms(scoped, ["role description", "job description", "description"]);
@@ -154,10 +209,14 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
       [SCHOOL_SYNONYMS, entry.school],
       [DEGREE_SYNONYMS, entry.degree],
       [["field of study", "major"], entry.fieldOfStudy],
-      [["start date"], entry.startDate],
-      [["end date", "graduation date"], entry.endDate],
       [["gpa"], entry.gpa ?? ""],
     ]);
+    if (!fillDateParts(scoped, "start date", entry.startDate)) {
+      fillWithinPanel(panel, scoped, [[["start date"], entry.startDate]]);
+    }
+    if (!fillDateParts(scoped, "end date", entry.endDate)) {
+      fillWithinPanel(panel, scoped, [[["end date", "graduation date"], entry.endDate]]);
+    }
   });
   if (educationResult.filledCount) summary.filled.push(`${educationResult.filledCount} education panel(s)`);
   if (educationResult.remaining) {
@@ -167,6 +226,45 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
   }
 
   return summary;
+}
+
+export interface QuestionField {
+  label: string;
+  el: FillableElement;
+}
+
+/**
+ * Finds unanswered free-text question fields on the current step: empty
+ * textareas with a real label, plus text inputs whose label reads like a
+ * question. Excludes cover-letter fields (filled from the package directly).
+ */
+export function findQuestionFields(): QuestionField[] {
+  const results: QuestionField[] = [];
+  for (const el of findFillableFields()) {
+    if (el.value?.trim()) continue;
+    const isTextarea = el instanceof HTMLTextAreaElement;
+    const raw = fieldLabelText(el).trim();
+    if (!raw || raw.length < 12) continue;
+    if (/cover letter/i.test(raw)) continue;
+    if (isTextarea || raw.includes("?")) {
+      results.push({ label: raw.slice(0, 300), el });
+    }
+  }
+  return results.slice(0, 15);
+}
+
+/** Fills drafted answers back into their fields by position. */
+export function applyAnswers(
+  fields: QuestionField[],
+  answers: { question: string; answer: string }[],
+): number {
+  let filled = 0;
+  for (let i = 0; i < fields.length && i < answers.length; i++) {
+    if (!answers[i].answer) continue;
+    setFieldValue(fields[i].el, answers[i].answer);
+    filled++;
+  }
+  return filled;
 }
 
 export function looksLikeApplicationForm(): boolean {

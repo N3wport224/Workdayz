@@ -62,6 +62,34 @@ async function handleMessage(message: RuntimeMessage) {
       await registerBridgeForOrigin(message.origin);
       return { ok: true };
     }
+    case "ANSWER_QUESTIONS": {
+      // Proxy to the web app's API: the background worker holds host
+      // permission for the connected origin, and the stored autofill package
+      // supplies the resume/job context. The API key never leaves the web app.
+      const stored = await chrome.storage.local.get([STORAGE_KEYS.webAppOrigin, STORAGE_KEYS.autofillPackage]);
+      const origin = stored[STORAGE_KEYS.webAppOrigin] as string | undefined;
+      const pkg = stored[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined;
+      if (!origin) return { error: "Connect the web app in the extension popup first." };
+      if (!pkg) return { error: "No tailored application stored — generate one in the web app first." };
+      try {
+        const res = await fetch(`${origin.replace(/\/$/, "")}/api/answer-questions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            job: pkg.job,
+            summary: pkg.summary,
+            skills: pkg.skills,
+            experience: pkg.experience.map((e) => ({ title: e.title, company: e.company, bullets: e.bullets })),
+            questions: message.questions,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) return { error: data.error ?? "Answer drafting failed." };
+        return { answers: data.answers };
+      } catch {
+        return { error: "Couldn't reach the web app — is it running?" };
+      }
+    }
     default:
       return { ok: false, error: `Unknown message type: ${(message as { type: string }).type}` };
   }

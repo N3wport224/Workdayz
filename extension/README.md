@@ -41,7 +41,12 @@ npm run generate-icons     # regenerate icons/*.png (only needed if you edit the
 3. Go back to the Workday tab (or start the application from the job
    posting) and click **Autofill this step** — either the floating widget or
    the extension popup's "Autofill active tab" button both work.
-4. Review what got filled, click Next yourself, and re-run autofill on the
+4. On steps with free-text questions, click **Draft answers to questions** —
+   the extension sends the questions plus your tailored resume context to
+   the web app's API and fills in first-person draft answers. Review and
+   edit every one; questions only you can answer (salary, work
+   authorization, relocation) come back as "[NEEDS YOUR INPUT]" placeholders.
+5. Review what got filled, click Next yourself, and re-run autofill on the
    next step. Nothing is submitted automatically — you click the final
    Submit button when you're satisfied.
 

@@ -1,6 +1,6 @@
-import type { AutofillPackage, JobPosting, RuntimeMessage } from "../types";
+import type { AutofillPackage, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
-import { looksLikeApplicationForm, runAutofill } from "./autofill";
+import { applyAnswers, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
 import { addButton, mountWidget } from "./widget";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -75,6 +75,34 @@ function initApplicationFormWidget() {
       widget.setStatus("The extension was updated — reload this page and try again.");
     }
     runBtn.disabled = false;
+  });
+
+  const answersBtn = addButton(widget.root, "Draft answers to questions", async () => {
+    answersBtn.disabled = true;
+    try {
+      const questionFields = findQuestionFields();
+      if (questionFields.length === 0) {
+        widget.setStatus("No unanswered question fields found on this step.");
+        return;
+      }
+      widget.setStatus(`Drafting answers to ${questionFields.length} question(s)... (10-30s)`);
+      const response = await sendMessage<{ answers?: QuestionAnswer[]; error?: string }>({
+        type: "ANSWER_QUESTIONS",
+        questions: questionFields.map((q) => q.label),
+      });
+      if (response.error || !response.answers) {
+        widget.setStatus(response.error ?? "Answer drafting failed.");
+        return;
+      }
+      const filled = applyAnswers(questionFields, response.answers);
+      widget.setStatus(
+        `Drafted ${filled} answer(s). REVIEW EACH ONE before continuing — anything marked "[NEEDS YOUR INPUT]" is yours to fill in.`,
+      );
+    } catch {
+      widget.setStatus("The extension was updated — reload this page and try again.");
+    } finally {
+      answersBtn.disabled = false;
+    }
   });
 }
 

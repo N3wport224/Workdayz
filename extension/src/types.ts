@@ -86,7 +86,13 @@ export type RuntimeMessage =
   | { type: "GET_AUTOFILL_PACKAGE" }
   | { type: "OPEN_APPLY_TAB" }
   | { type: "REGISTER_WEB_APP_ORIGIN"; origin: string }
-  | { type: "RUN_AUTOFILL" };
+  | { type: "RUN_AUTOFILL" }
+  | { type: "ANSWER_QUESTIONS"; questions: string[] };
+
+export interface QuestionAnswer {
+  question: string;
+  answer: string;
+}
 
 export interface AutofillRunSummary {
   filled: string[];

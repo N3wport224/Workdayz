@@ -9,7 +9,9 @@ function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function labelForElement(el: Element): string {
+/** Raw (un-normalized) label text for a field — used when the actual wording
+ * matters, e.g. sending an application question's text to the LLM. */
+export function fieldLabelText(el: Element): string {
   const parts: string[] = [];
 
   const ariaLabel = el.getAttribute("aria-label");
@@ -46,7 +48,26 @@ function labelForElement(el: Element): string {
   const automationId = el.getAttribute("data-automation-id");
   if (automationId) parts.push(automationId.replace(/([a-z])([A-Z])/g, "$1 $2"));
 
-  return normalize(parts.join(" "));
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+function labelForElement(el: Element): string {
+  return normalize(fieldLabelText(el));
+}
+
+/** Like findFieldBySynonyms but requires the label to contain EVERY term —
+ * used for compound fields like "start date" + "month". */
+export function findFieldByAllTerms(
+  fields: FillableElement[],
+  terms: string[],
+  { onlyEmpty = true }: { onlyEmpty?: boolean } = {},
+): FillableElement | null {
+  for (const el of fields) {
+    if (onlyEmpty && !isEmpty(el)) continue;
+    const label = labelForElement(el);
+    if (label && terms.every((t) => label.includes(normalize(t)))) return el;
+  }
+  return null;
 }
 
 function isVisible(el: Element): boolean {

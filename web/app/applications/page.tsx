@@ -9,6 +9,7 @@ import {
   updateApplication,
   updateApplicationStatus,
 } from "@/lib/applications";
+import { applicationsToCsv } from "@/lib/csv";
 import { fetchPdfAsBase64, sendPackageToExtension } from "@/lib/extension-bridge";
 import { APPLICATION_STATUSES, type ApplicationStatus, type AutofillPackage, type SavedApplication } from "@/lib/types";
 
@@ -81,6 +82,20 @@ export default function ApplicationsPage() {
         <span className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5">
           avg ATS <span className="font-semibold">{avgAts}</span>
         </span>
+        <button
+          onClick={() => {
+            const blob = new Blob([applicationsToCsv(applications)], { type: "text/csv" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "workdayz-applications.csv";
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+          className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5 text-blue-600 dark:text-blue-400 ml-auto"
+        >
+          Export CSV
+        </button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
         <ul className="space-y-2">

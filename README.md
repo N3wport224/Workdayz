@@ -75,10 +75,17 @@ track its status over time.
   automatically; track status from draft through offer, with per-application
   notes and a stats row (status funnel, average ATS).
 - **Workday autofill** — browser extension fills contact fields (including
-  Workday's custom listbox dropdowns like country/state), uploads the
-  resume/cover letter, and fills as many work-experience/education panels as
-  are already on the page, re-scanning automatically as Workday's SPA
-  navigates between steps.
+  Workday's custom listbox dropdowns like country/state and split Month/Year
+  date inputs), uploads the resume/cover letter, and fills as many
+  work-experience/education panels as are already on the page, re-scanning
+  automatically as Workday's SPA navigates between steps.
+- **Application question drafting** — the extension scrapes the free-text
+  questions on the current Workday step ("Why do you want this role?") and
+  drafts first-person answers grounded in your real experience for you to
+  review and edit in place. Questions only you can answer (salary, work
+  authorization, relocation) come back as explicit "[NEEDS YOUR INPUT]"
+  placeholders, never guesses.
+- **CSV export** — download the tracker as a spreadsheet.
 
 ## Safety notes
 
