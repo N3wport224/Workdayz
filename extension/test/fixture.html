@@ -26,7 +26,8 @@
   </div>
   <div class="formField">
     <label for="email">Email Address</label>
-    <input id="email" type="text" />
+    <!-- prefilled by the "employer" — autofill must NOT overwrite it -->
+    <input id="email" type="text" value="prefilled@example.com" />
   </div>
   <div class="formField">
     <label for="phone">Phone Number</label>
@@ -44,10 +45,21 @@
   <div class="formField" data-automation-id="formField-countryDropdown">
     <label id="country-label">Country</label>
     <button id="country-btn" aria-haspopup="listbox" aria-labelledby="country-label">Select One</button>
-    <ul id="country-list" role="listbox" class="hidden">
+    <ul role="listbox" class="hidden">
       <li role="option">Canada</li>
       <li role="option">United States of America</li>
       <li role="option">United Kingdom</li>
+    </ul>
+  </div>
+
+  <div class="formField" data-automation-id="formField-stateDropdown">
+    <label id="state-label">State</label>
+    <!-- full names only: profile stores the abbreviation "TX" -->
+    <button id="state-btn" aria-haspopup="listbox" aria-labelledby="state-label">Select One</button>
+    <ul role="listbox" class="hidden">
+      <li role="option">Alabama</li>
+      <li role="option">Texas</li>
+      <li role="option">Utah</li>
     </ul>
   </div>
 
@@ -119,13 +131,14 @@
   <script>
     // Mimic Workday's listbox behavior: click button -> show options,
     // click option -> set button text, hide list.
-    const btn = document.getElementById("country-btn");
-    const list = document.getElementById("country-list");
-    btn.addEventListener("click", () => list.classList.toggle("hidden"));
-    list.querySelectorAll('[role="option"]').forEach((opt) => {
-      opt.addEventListener("click", () => {
-        btn.textContent = opt.textContent;
-        list.classList.add("hidden");
+    document.querySelectorAll('button[aria-haspopup="listbox"]').forEach((btn) => {
+      const list = btn.parentElement.querySelector('[role="listbox"]');
+      btn.addEventListener("click", () => list.classList.toggle("hidden"));
+      list.querySelectorAll('[role="option"]').forEach((opt) => {
+        opt.addEventListener("click", () => {
+          btn.textContent = opt.textContent;
+          list.classList.add("hidden");
+        });
       });
     });
   </script>

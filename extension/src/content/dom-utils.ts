@@ -187,8 +187,40 @@ function listboxAlreadyHasValue(button: HTMLElement): boolean {
   return Boolean(text) && !/^select( one)?$/.test(text);
 }
 
+// Profiles often store abbreviations while Workday dropdowns list full
+// names — substring matching can't bridge "TX" → "Texas", so expand known
+// aliases into additional candidate needles.
+const US_STATES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  DC: "District of Columbia",
+};
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  usa: "united states",
+  us: "united states",
+  uk: "united kingdom",
+};
+
+function expandValueCandidates(value: string): string[] {
+  const candidates = [value];
+  const state = US_STATES[value.trim().toUpperCase()];
+  if (state) candidates.push(state);
+  const country = COUNTRY_ALIASES[normalize(value).trim()];
+  if (country) candidates.push(country);
+  return candidates;
+}
+
 function waitForOption(value: string, timeoutMs: number): Promise<HTMLElement | null> {
-  const needle = normalize(value);
+  const needles = expandValueCandidates(value).map((v) => normalize(v).trim()).filter(Boolean);
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve) => {
     const poll = () => {
@@ -199,8 +231,10 @@ function waitForOption(value: string, timeoutMs: number): Promise<HTMLElement | 
       for (const opt of options) {
         const text = normalize(opt.textContent ?? "");
         if (!text) continue;
-        if (text === needle) return resolve(opt); // exact match wins immediately
-        if (!fallback && (text.includes(needle) || needle.includes(text))) fallback = opt;
+        for (const needle of needles) {
+          if (text === needle) return resolve(opt); // exact match wins immediately
+          if (!fallback && (text.includes(needle) || needle.includes(text))) fallback = opt;
+        }
       }
       if (fallback) return resolve(fallback);
       if (Date.now() > deadline) return resolve(null);

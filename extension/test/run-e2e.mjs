@@ -107,13 +107,20 @@ try {
 
   check("first name", (await val("#firstName")) === "Alex");
   check("last name", (await val("#lastName")) === "Perez");
-  check("email", (await val("#email")) === "aperezjobs@gmail.com");
+  check(
+    "prefilled email NOT overwritten",
+    (await val("#email")) === "prefilled@example.com",
+    `got "${await val("#email")}"`,
+  );
   check("phone", (await val("#phone")) === "555-0100");
   check("city", (await val("#city")) === "Austin");
   check("postal code", (await val("#postal")) === "78701");
 
   const countryText = await page.$eval("#country-btn", (el) => el.textContent);
   check("country listbox picked", countryText.includes("United States of America"), `got "${countryText}"`);
+
+  const stateText = await page.$eval("#state-btn", (el) => el.textContent);
+  check('state "TX" expands to "Texas" option', stateText === "Texas", `got "${stateText}"`);
 
   check("panel 1 job title", (await val("#jobTitle1")) === "Senior Engineer");
   check("panel 1 company", (await val("#company1")) === "Acme Corp");

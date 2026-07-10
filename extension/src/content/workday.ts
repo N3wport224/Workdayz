@@ -94,7 +94,13 @@ function initApplicationFormWidget() {
         widget.setStatus(response.error ?? "Answer drafting failed.");
         return;
       }
-      const filled = applyAnswers(questionFields, response.answers);
+      // Workday's SPA may have re-rendered during the 10-30s LLM call,
+      // detaching the elements we scraped. Re-find the fields and align
+      // answers by label (falling back to nothing rather than guessing).
+      const byLabel = new Map(response.answers.map((a) => [a.question, a.answer]));
+      const freshFields = findQuestionFields();
+      const aligned = freshFields.map((f) => ({ question: f.label, answer: byLabel.get(f.label) ?? "" }));
+      const filled = applyAnswers(freshFields, aligned);
       widget.setStatus(
         `Drafted ${filled} answer(s). REVIEW EACH ONE before continuing — anything marked "[NEEDS YOUR INPUT]" is yours to fill in.`,
       );
