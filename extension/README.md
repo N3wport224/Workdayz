@@ -82,10 +82,13 @@ This means:
   patched History API), so you generally don't need to reload the tab. It
   also runs in all frames in case a tenant embeds the apply flow in an
   iframe.
-- Some tenants use custom domains that don't match `*.myworkdayjobs.com` —
-  if the widget doesn't appear on your company's application pages, add
-  your tenant's domain to `host_permissions` and the `content_scripts`
-  `matches` array in `manifest.json`, then rebuild.
+- The extension is deliberately scoped to PUBLIC Workday career sites
+  (`*.myworkdayjobs.com`) only. It cannot inject on internal/logged-in
+  Workday (`*.myworkday.com`) — that's an intentional guardrail so it can
+  never touch an employer's internal systems. If a public career site uses
+  a custom domain that doesn't match, add that domain to `host_permissions`
+  and the `content_scripts` `matches` array in `manifest.json`, then
+  rebuild.
 - If a field isn't found, it's silently skipped and listed in the "couldn't
   find" summary rather than guessed at — check your company's IT/acceptable
   use policy before relying on this for real applications.
