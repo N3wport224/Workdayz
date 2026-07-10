@@ -31,13 +31,21 @@ export function upsertApplication(app: SavedApplication): void {
   persist(applications);
 }
 
-export function updateApplicationStatus(id: string, status: ApplicationStatus): void {
+export function updateApplication(id: string, patch: Partial<SavedApplication>): void {
   const applications = loadApplications();
-  const app = applications.find((a) => a.id === id);
-  if (!app) return;
-  app.status = status;
-  app.updatedAt = new Date().toISOString();
+  const index = applications.findIndex((a) => a.id === id);
+  if (index < 0) return;
+  applications[index] = {
+    ...applications[index],
+    ...patch,
+    id, // never let a patch change identity
+    updatedAt: new Date().toISOString(),
+  };
   persist(applications);
+}
+
+export function updateApplicationStatus(id: string, status: ApplicationStatus): void {
+  updateApplication(id, { status });
 }
 
 export function deleteApplication(id: string): void {

@@ -43,7 +43,8 @@ offer/rejected) over time.
 
 ## API routes
 
-- `POST /api/import-resume` — `{ resumeText }` → `{ profile }`
+- `POST /api/import-resume` — `{ resumeText }` or `{ resumePdfBase64 }` → `{ profile }`
+- `POST /api/interview-prep` — `{ job, summary, skills, experience, gaps? }` → `{ prep }`
 - `POST /api/tailor` — `{ profile, job }` → `{ tailoredResume, coverLetter, atsScore }`
 - `POST /api/resume-pdf` — resume data → PDF file
 - `POST /api/cover-letter-pdf` — cover letter data → PDF file

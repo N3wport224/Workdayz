@@ -116,6 +116,10 @@ export default function ApplyPage() {
       certifications: profile.certifications,
       coverLetterText,
       atsScore: tailored.atsScore,
+      fitAnalysis: tailored.fitAnalysis,
+      // Preserve prep/notes added from the tracker if this entry already exists.
+      interviewPrep: getApplication(applicationIdRef.current)?.interviewPrep,
+      notes: getApplication(applicationIdRef.current)?.notes,
     });
   }
 
@@ -314,6 +318,35 @@ export default function ApplyPage() {
       {result ? (
         <div className="space-y-6">
           <AtsScoreMeter ats={result.atsScore} />
+
+          {result.fitAnalysis.verdict ? (
+            <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
+              <h3 className="font-semibold mb-2">Fit analysis</h3>
+              <p className="text-sm opacity-80 mb-3">{result.fitAnalysis.verdict}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="font-medium mb-1 text-emerald-700 dark:text-emerald-300">
+                    Strengths for this role
+                  </p>
+                  <ul className="list-disc list-inside opacity-80 space-y-0.5">
+                    {result.fitAnalysis.strengths.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="font-medium mb-1 text-amber-700 dark:text-amber-300">
+                    Gaps to prepare for
+                  </p>
+                  <ul className="list-disc list-inside opacity-80 space-y-0.5">
+                    {result.fitAnalysis.gaps.map((g, i) => (
+                      <li key={i}>{g}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {result.atsScore.missingKeywords.length > 0 ? (
             <button

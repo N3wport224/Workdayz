@@ -65,10 +65,17 @@ track its status over time.
   plus a matching cover letter, without inventing experience.
 - **ATS scoring** — deterministic keyword-coverage score with formatting
   feedback and an integrity check on anything the model added.
+- **Fit analysis** — an honest strengths/gaps/verdict read on you vs. the
+  role (gaps are deliberately not sugarcoated), generated in the same call.
+- **Interview prep** — per application, generate the questions you're likely
+  to face with talking points mapped to your real experience, including
+  honest framings for your known gaps.
 - **ATS-safe PDFs** — single-column, text-based, no tables/images.
 - **Application tracker** — every tailored application is saved
-  automatically; track status from draft through offer.
-- **Workday autofill** — browser extension fills contact fields, uploads the
+  automatically; track status from draft through offer, with per-application
+  notes and a stats row (status funnel, average ATS).
+- **Workday autofill** — browser extension fills contact fields (including
+  Workday's custom listbox dropdowns like country/state), uploads the
   resume/cover letter, and fills as many work-experience/education panels as
   are already on the page, re-scanning automatically as Workday's SPA
   navigates between steps.

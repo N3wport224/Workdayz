@@ -1,11 +1,13 @@
 import type { AutofillPackage, AutofillRunSummary, EducationEntry, ExperienceEntry } from "../types";
 import {
   attachFileToInput,
+  fillListbox,
   findAllFieldsBySynonyms,
   findCheckboxBySynonyms,
   findFieldBySynonyms,
   findFileInputBySynonyms,
   findFillableFields,
+  findListboxButtonBySynonyms,
   findPanelContainer,
   setCheckbox,
   setFieldValue,
@@ -87,7 +89,7 @@ function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
  * Another" — the user advances the wizard themselves and re-runs this once
  * per step, which doubles as their review checkpoint.
  */
-export function runAutofill(pkg: AutofillPackage): AutofillRunSummary {
+export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSummary> {
   const summary: AutofillRunSummary = { filled: [], skipped: [], filesAttached: [] };
   const fields = findFillableFields();
 
@@ -97,6 +99,13 @@ export function runAutofill(pkg: AutofillPackage): AutofillRunSummary {
     const field = findFieldBySynonyms(fields, synonyms);
     if (field) {
       setFieldValue(field, value);
+      summary.filled.push(key);
+      continue;
+    }
+    // No text input matched — Workday renders country/state/phone-type as
+    // custom listbox buttons. Sequential awaits: only one popup at a time.
+    const listbox = findListboxButtonBySynonyms(document, synonyms);
+    if (listbox && (await fillListbox(listbox, value))) {
       summary.filled.push(key);
     } else {
       summary.skipped.push(key);

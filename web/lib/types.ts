@@ -72,10 +72,28 @@ export interface AtsScoreBreakdown {
   notes: string;
 }
 
+export interface FitAnalysis {
+  verdict: string;
+  strengths: string[];
+  gaps: string[];
+}
+
 export interface TailorResult {
   tailoredResume: TailoredResume;
   coverLetter: string;
   atsScore: AtsScoreBreakdown;
+  fitAnalysis: FitAnalysis;
+}
+
+export interface InterviewQuestion {
+  question: string;
+  category: string; // e.g. "behavioral", "technical", "role-specific", "screening"
+  talkingPoints: string[];
+}
+
+export interface InterviewPrep {
+  generatedAt: string;
+  questions: InterviewQuestion[];
 }
 
 export type ApplicationStatus = "draft" | "applied" | "interviewing" | "rejected" | "offer";
@@ -106,6 +124,9 @@ export interface SavedApplication {
   certifications: string[];
   coverLetterText: string;
   atsScore: AtsScoreBreakdown;
+  fitAnalysis?: FitAnalysis;
+  interviewPrep?: InterviewPrep;
+  notes?: string;
 }
 
 // The package handed off to the browser extension for autofilling Workday.

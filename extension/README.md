@@ -56,6 +56,12 @@ fuzzy, synonym-based matching against each field's label (via `<label>`,
 This means:
 - It generally handles the flat "My Information" contact fields (name,
   email, phone, address) and resume/cover-letter file uploads well.
+- Workday's custom dropdowns (`aria-haspopup="listbox"` buttons — country,
+  state, etc.) are handled best-effort: the extension opens the dropdown,
+  waits up to 2s for options, clicks the best text match, and presses
+  Escape if nothing matches. It skips dropdowns that already show a value
+  and refuses to touch anything whose label reads like
+  submit/continue/next.
 - Repeatable multi-entry sections (work history, education) are filled
   **best-effort**: it fills however many panels are *already rendered* on
   the page, matched to your profile entries in order, but it does not click

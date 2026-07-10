@@ -126,6 +126,84 @@ export function findPanelContainer(anchor: HTMLElement, fields: FillableElement[
   return best;
 }
 
+/**
+ * Workday renders most dropdowns as <button aria-haspopup="listbox"> (or
+ * role="combobox") rather than native <select>. Finds one by label within a
+ * container, skipping anything already showing a chosen value.
+ */
+export function findListboxButtonBySynonyms(
+  container: ParentNode,
+  synonyms: string[],
+): HTMLElement | null {
+  const buttons = Array.from(
+    container.querySelectorAll<HTMLElement>('button[aria-haspopup="listbox"], [role="combobox"]'),
+  );
+  let best: { el: HTMLElement; score: number } | null = null;
+  for (const el of buttons) {
+    if (!isVisible(el)) continue;
+    const label = labelForElement(el);
+    if (!label) continue;
+    for (const syn of synonyms) {
+      const needle = normalize(syn);
+      if (label.includes(needle) && needle.length > (best?.score ?? 0)) {
+        best = { el, score: needle.length };
+      }
+    }
+  }
+  return best?.el ?? null;
+}
+
+function listboxAlreadyHasValue(button: HTMLElement): boolean {
+  const text = normalize(button.textContent ?? "");
+  // Workday placeholders read "select one", "select…", or are empty.
+  return Boolean(text) && !/^select( one)?$/.test(text);
+}
+
+function waitForOption(value: string, timeoutMs: number): Promise<HTMLElement | null> {
+  const needle = normalize(value);
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      const options = Array.from(
+        document.querySelectorAll<HTMLElement>('[role="option"], [role="listbox"] li'),
+      ).filter(isVisible);
+      let fallback: HTMLElement | null = null;
+      for (const opt of options) {
+        const text = normalize(opt.textContent ?? "");
+        if (!text) continue;
+        if (text === needle) return resolve(opt); // exact match wins immediately
+        if (!fallback && (text.includes(needle) || needle.includes(text))) fallback = opt;
+      }
+      if (fallback) return resolve(fallback);
+      if (Date.now() > deadline) return resolve(null);
+      setTimeout(poll, 120);
+    };
+    poll();
+  });
+}
+
+/**
+ * Opens a Workday-style listbox button and clicks the best-matching option.
+ * Refuses to touch anything that reads like a navigation/submission control,
+ * and closes the popup again (Escape) if no option matches.
+ */
+export async function fillListbox(button: HTMLElement, value: string): Promise<boolean> {
+  const identity = normalize(
+    `${button.textContent ?? ""} ${button.getAttribute("data-automation-id") ?? ""}`,
+  );
+  if (/\b(submit|continue|next|save and continue|apply now)\b/.test(identity)) return false;
+  if (listboxAlreadyHasValue(button)) return false;
+
+  button.click();
+  const option = await waitForOption(value, 2000);
+  if (!option) {
+    button.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    return false;
+  }
+  option.click();
+  return true;
+}
+
 export function findCheckboxBySynonyms(container: ParentNode, synonyms: string[]): HTMLInputElement | null {
   const checkboxes = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
   for (const el of checkboxes) {

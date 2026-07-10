@@ -47,7 +47,7 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
     return null;
   }
   widget.setStatus(`Filling from "${pkg.job.title}" at ${pkg.job.company} (ATS ${pkg.atsScore}/100)...`);
-  const result = runAutofill(pkg);
+  const result = await runAutofill(pkg);
   const parts = [`Filled ${result.filled.length} field group(s)`];
   if (result.filesAttached.length) parts.push(`attached ${result.filesAttached.join(" & ")}`);
   if (result.skipped.length) parts.push(`couldn't find: ${result.skipped.join(", ")}`);
@@ -119,12 +119,12 @@ new MutationObserver(scheduleEvaluate).observe(document.body, { childList: true,
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   if (message.type === "RUN_AUTOFILL") {
     if (!looksLikeApplicationForm()) return false;
-    sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }).then(({ pkg }) => {
+    sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }).then(async ({ pkg }) => {
       if (!pkg) {
         sendResponse({ filled: [], skipped: [], filesAttached: [] });
         return;
       }
-      sendResponse(runAutofill(pkg));
+      sendResponse(await runAutofill(pkg));
     });
     return true;
   }
