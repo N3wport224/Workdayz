@@ -16,7 +16,9 @@ function profileText(profile: ResumeProfile): string {
   return [
     profile.summary,
     profile.skills.join(" "),
-    profile.experience.flatMap((e) => e.bullets).join(" "),
+    // Titles/companies count as evidence too — "Engineering Manager" should
+    // verify a "management" skill.
+    profile.experience.flatMap((e) => [e.title, e.company, ...e.bullets]).join(" "),
     profile.certifications.join(" "),
   ].join(" ");
 }
@@ -36,9 +38,15 @@ export function computeAtsScore(
   const matched: string[] = [];
   const missing: string[] = [];
 
+  // Dedupe by normalized form and drop blanks BEFORE scoring — duplicate
+  // keywords from the model would otherwise double-count in the score (and
+  // collide as React keys in the chip list), while blank ones would inflate
+  // the denominator.
+  const seen = new Set<string>();
   for (const kw of keywords) {
     const needle = normalize(kw).trim();
-    if (!needle) continue;
+    if (!needle || seen.has(needle)) continue;
+    seen.add(needle);
     if (haystack.includes(needle)) {
       matched.push(kw);
     } else {
@@ -46,9 +54,8 @@ export function computeAtsScore(
     }
   }
 
-  const keywordCoverage = keywords.length
-    ? matched.length / keywords.length
-    : 1;
+  const totalKeywords = matched.length + missing.length;
+  const keywordCoverage = totalKeywords ? matched.length / totalKeywords : 1;
 
   const formattingIssues: string[] = [];
   if (!tailored.summary || tailored.summary.split(/\s+/).length < 15) {
@@ -91,7 +98,7 @@ export function computeAtsScore(
 
   const notes: string[] = [];
   notes.push(
-    `${matched.length}/${keywords.length || 0} job keywords found in your tailored resume.`,
+    `${matched.length}/${totalKeywords} job keywords found in your tailored resume.`,
   );
   if (unverifiedSkills.length) {
     notes.push(

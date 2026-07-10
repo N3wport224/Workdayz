@@ -28,7 +28,7 @@ jobs:
           ANTHROPIC_API_KEY: ci-placeholder
 
   extension:
-    name: Extension (typecheck, build)
+    name: Extension (typecheck, build, DOM e2e)
     runs-on: ubuntu-latest
     defaults:
       run:

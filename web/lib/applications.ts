@@ -10,7 +10,12 @@ export function loadApplications(): SavedApplication[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    // Drop corrupt entries rather than letting one break the whole tracker.
+    return parsed.filter(
+      (a): a is SavedApplication =>
+        Boolean(a) && typeof a.id === "string" && Boolean(a.job) && Boolean(a.atsScore),
+    );
   } catch {
     return [];
   }

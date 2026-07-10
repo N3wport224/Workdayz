@@ -130,4 +130,31 @@ describe("computeAtsScore", () => {
     expect(result.matchedKeywords).toEqual([]);
     expect(result.missingKeywords).toEqual([]);
   });
+
+  it("dedupes repeated keywords so they can't double-count", () => {
+    const result = computeAtsScore(
+      ["TypeScript", "typescript", "TypeScript", "Rust"],
+      tailoredResume(),
+      profile(),
+    );
+    expect(result.matchedKeywords).toEqual(["TypeScript"]);
+    expect(result.missingKeywords).toEqual(["Rust"]);
+    expect(result.notes).toContain("1/2 job keywords");
+  });
+
+  it("ignores blank keywords in the coverage denominator", () => {
+    const result = computeAtsScore(["TypeScript", "", "   "], tailoredResume(), profile());
+    expect(result.notes).toContain("1/1 job keywords");
+    expect(result.score).toBe(100);
+  });
+
+  it("verifies skills evidenced only by a job title", () => {
+    const sourceProfile = profile({
+      experience: [
+        { id: "1", company: "Acme", title: "Engineering Manager", location: "", startDate: "", endDate: "", bullets: ["Did things."] },
+      ],
+    });
+    const result = computeAtsScore([], tailoredResume({ skills: ["Engineering Manager"] }), sourceProfile);
+    expect(result.notes).not.toContain("Engineering Manager");
+  });
 });

@@ -26,13 +26,20 @@ export const emptyProfile: ResumeProfile = {
 };
 
 /** Merges a possibly-partial stored/imported profile onto the empty profile,
- * deep-merging `contact` so every field the UI binds to is a real string. */
+ * deep-merging `contact` so every field the UI binds to is a real string and
+ * forcing array fields back to arrays (a hand-edited backup with e.g.
+ * `"skills": "TypeScript"` must not crash the form). */
 export function mergeProfile(partial: Partial<ResumeProfile> | null | undefined): ResumeProfile {
   if (!partial || typeof partial !== "object") return emptyProfile;
+  const arr = <T>(v: T[] | undefined, fallback: T[]): T[] => (Array.isArray(v) ? v : fallback);
   return {
     ...emptyProfile,
     ...partial,
     contact: { ...emptyProfile.contact, ...(partial.contact ?? {}) },
+    skills: arr(partial.skills, emptyProfile.skills),
+    experience: arr(partial.experience, emptyProfile.experience),
+    education: arr(partial.education, emptyProfile.education),
+    certifications: arr(partial.certifications, emptyProfile.certifications),
   };
 }
 
