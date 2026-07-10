@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mock Workday Application</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; }
+    .formField { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; margin-bottom: 2px; }
+    [role="listbox"] { border: 1px solid #999; list-style: none; padding: 4px; }
+    [role="option"] { cursor: pointer; padding: 2px 6px; }
+    .hidden { display: none; }
+    fieldset { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h1>My Information</h1>
+
+  <div class="formField" data-automation-id="formField-legalNameSection_firstName">
+    <label for="firstName">First Name</label>
+    <input id="firstName" type="text" />
+  </div>
+  <div class="formField" data-automation-id="formField-legalNameSection_lastName">
+    <label for="lastName">Last Name</label>
+    <input id="lastName" type="text" />
+  </div>
+  <div class="formField">
+    <label for="email">Email Address</label>
+    <input id="email" type="text" />
+  </div>
+  <div class="formField">
+    <label for="phone">Phone Number</label>
+    <input id="phone" type="text" />
+  </div>
+  <div class="formField">
+    <label for="city">City</label>
+    <input id="city" type="text" />
+  </div>
+  <div class="formField">
+    <label for="postal">Postal Code</label>
+    <input id="postal" type="text" />
+  </div>
+
+  <div class="formField" data-automation-id="formField-countryDropdown">
+    <label id="country-label">Country</label>
+    <button id="country-btn" aria-haspopup="listbox" aria-labelledby="country-label">Select One</button>
+    <ul id="country-list" role="listbox" class="hidden">
+      <li role="option">Canada</li>
+      <li role="option">United States of America</li>
+      <li role="option">United Kingdom</li>
+    </ul>
+  </div>
+
+  <h1>Experience</h1>
+
+  <fieldset data-automation-id="workExperience-1">
+    <legend>Work Experience 1</legend>
+    <div class="formField">
+      <label for="jobTitle1">Job Title</label>
+      <input id="jobTitle1" type="text" />
+    </div>
+    <div class="formField">
+      <label for="company1">Company</label>
+      <input id="company1" type="text" />
+    </div>
+    <div class="formField" data-automation-id="formField-startDate-1">
+      <label>Start Date</label>
+      <input aria-label="Month" data-automation-id="dateSectionMonth-input" type="text" />
+      <input aria-label="Year" data-automation-id="dateSectionYear-input" type="text" />
+    </div>
+    <div class="formField">
+      <label><input id="current1" type="checkbox" /> I currently work here</label>
+    </div>
+    <div class="formField">
+      <label for="desc1">Role Description</label>
+      <textarea id="desc1"></textarea>
+    </div>
+  </fieldset>
+
+  <fieldset data-automation-id="workExperience-2">
+    <legend>Work Experience 2</legend>
+    <div class="formField">
+      <label for="jobTitle2">Job Title</label>
+      <input id="jobTitle2" type="text" />
+    </div>
+    <div class="formField">
+      <label for="company2">Company</label>
+      <input id="company2" type="text" />
+    </div>
+    <div class="formField" data-automation-id="formField-endDate-2">
+      <label>End Date</label>
+      <input aria-label="Month" data-automation-id="dateSectionMonth-input" type="text" />
+      <input aria-label="Year" data-automation-id="dateSectionYear-input" type="text" />
+    </div>
+  </fieldset>
+
+  <h1>Documents</h1>
+  <div class="formField">
+    <label for="portfolioUpload">Portfolio sample (optional)</label>
+    <input id="portfolioUpload" type="file" />
+  </div>
+  <div class="formField" data-automation-id="resumeUpload">
+    <label for="resumeUpload">Resume/CV</label>
+    <input id="resumeUpload" type="file" />
+  </div>
+
+  <h1>Questions</h1>
+  <div class="formField">
+    <label for="q1">Why do you want to work at Acme Corp?</label>
+    <textarea id="q1"></textarea>
+  </div>
+  <div class="formField">
+    <label for="notAQuestion">Ref</label>
+    <input id="notAQuestion" type="text" />
+  </div>
+
+  <button data-automation-id="bottom-navigation-next-button">Save and Continue</button>
+
+  <script>
+    // Mimic Workday's listbox behavior: click button -> show options,
+    // click option -> set button text, hide list.
+    const btn = document.getElementById("country-btn");
+    const list = document.getElementById("country-list");
+    btn.addEventListener("click", () => list.classList.toggle("hidden"));
+    list.querySelectorAll('[role="option"]').forEach((opt) => {
+      opt.addEventListener("click", () => {
+        btn.textContent = opt.textContent;
+        list.classList.add("hidden");
+      });
+    });
+  </script>
+</body>
+</html>

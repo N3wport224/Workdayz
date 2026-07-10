@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   deleteApplication,
   loadApplications,
+  statusSince,
   updateApplication,
   updateApplicationStatus,
 } from "@/lib/applications";
@@ -265,7 +266,8 @@ function ApplicationDetail({
             {application.job.location ? ` — ${application.job.location}` : ""}
           </p>
           <p className="text-xs opacity-50 mt-1">
-            Tailored {new Date(application.createdAt).toLocaleString()}
+            Tailored {new Date(application.createdAt).toLocaleString()} · in{" "}
+            {application.status} for {daysSince(statusSince(application))}
           </p>
         </div>
         <select
@@ -401,6 +403,12 @@ function ApplicationDetail({
       {actionStatus ? <p className="text-sm opacity-80">{actionStatus}</p> : null}
     </div>
   );
+}
+
+function daysSince(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return "less than a day";
+  return `${days} day${days === 1 ? "" : "s"}`;
 }
 
 function triggerDownload(base64: string, fileName: string) {

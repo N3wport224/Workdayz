@@ -45,7 +45,18 @@ export function updateApplication(id: string, patch: Partial<SavedApplication>):
 }
 
 export function updateApplicationStatus(id: string, status: ApplicationStatus): void {
-  updateApplication(id, { status });
+  const app = loadApplications().find((a) => a.id === id);
+  if (!app || app.status === status) return;
+  updateApplication(id, {
+    status,
+    statusHistory: [...(app.statusHistory ?? []), { status, at: new Date().toISOString() }],
+  });
+}
+
+/** When the current status took effect: last history entry, else creation. */
+export function statusSince(app: SavedApplication): string {
+  const history = app.statusHistory;
+  return history?.length ? history[history.length - 1].at : app.createdAt;
 }
 
 export function deleteApplication(id: string): void {

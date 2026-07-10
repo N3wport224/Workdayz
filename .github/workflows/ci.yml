@@ -43,3 +43,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run build
+      - name: Install Chromium for DOM tests
+        run: npx playwright-core install chromium --with-deps
+      - name: DOM heuristics e2e
+        run: npm test

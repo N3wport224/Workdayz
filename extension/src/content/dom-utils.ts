@@ -37,12 +37,19 @@ export function fieldLabelText(el: Element): string {
   const placeholder = el.getAttribute("placeholder");
   if (placeholder) parts.push(placeholder);
 
-  // Workday commonly renders a <fieldset>/<div> with a preceding heading or
-  // data-automation-id label sibling above the field's own container.
-  const container = el.closest('[data-automation-id], fieldset, div[role="group"]');
+  // Workday commonly renders a <fieldset>/<div> with a heading label above
+  // the field's own container. Start the lookup from the PARENT — fields like
+  // dateSectionMonth-input carry their own data-automation-id, and closest()
+  // from the element itself would match the field instead of its container.
+  const container = el.parentElement?.closest('[data-automation-id], fieldset, div[role="group"]');
   if (container) {
-    const heading = container.querySelector('label, legend, [data-automation-id$="label"]');
-    if (heading?.textContent && heading !== wrappingLabel) parts.push(heading.textContent);
+    const heading = container.querySelector("label, legend, [data-automation-id$='label']");
+    if (heading?.textContent && heading !== wrappingLabel) {
+      // Don't inherit a heading that is explicitly some OTHER field's label,
+      // or one sibling's label bleeds into every field in the group.
+      const forId = heading.getAttribute("for");
+      if (!forId || forId === id) parts.push(heading.textContent);
+    }
   }
 
   const automationId = el.getAttribute("data-automation-id");
