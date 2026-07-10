@@ -11,19 +11,21 @@ import {
   updateApplicationStatus,
 } from "@/lib/applications";
 import { applicationsToCsv } from "@/lib/csv";
-import { fetchPdfAsBase64, sendPackageToExtension } from "@/lib/extension-bridge";
+import { fetchPdfAsBase64, onExtensionDetected, sendPackageToExtension } from "@/lib/extension-bridge";
 import { APPLICATION_STATUSES, type ApplicationStatus, type AutofillPackage, type SavedApplication } from "@/lib/types";
 
 export default function ApplicationsPage() {
   const [applications, setApplications] = useState<SavedApplication[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [extensionPresent, setExtensionPresent] = useState(false);
 
   useEffect(() => {
     const apps = loadApplications();
     setApplications(apps);
     setSelectedId(apps[0]?.id ?? null);
     setLoaded(true);
+    return onExtensionDetected(setExtensionPresent);
   }, []);
 
   function refresh() {
@@ -124,6 +126,7 @@ export default function ApplicationsPage() {
         {selected ? (
           <ApplicationDetail
             application={selected}
+            extensionPresent={extensionPresent}
             onStatusChange={(status) => handleStatusChange(selected.id, status)}
             onDelete={() => handleDelete(selected.id)}
             onUpdated={refresh}
@@ -138,11 +141,13 @@ export default function ApplicationsPage() {
 
 function ApplicationDetail({
   application,
+  extensionPresent,
   onStatusChange,
   onDelete,
   onUpdated,
 }: {
   application: SavedApplication;
+  extensionPresent: boolean;
   onStatusChange: (status: ApplicationStatus) => void;
   onDelete: () => void;
   onUpdated: () => void;
@@ -250,7 +255,11 @@ function ApplicationDetail({
         atsScore: application.atsScore.score,
       };
       sendPackageToExtension(pkg);
-      setActionStatus("Sent to extension.");
+      setActionStatus(
+        extensionPresent
+          ? "Sent to extension — open your Workday tab and click Autofill."
+          : "Extension not detected in this tab — install/enable it and reload, then retry.",
+      );
     } catch (err) {
       setActionStatus(err instanceof Error ? err.message : "Failed.");
     }

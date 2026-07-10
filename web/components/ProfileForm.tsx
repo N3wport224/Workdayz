@@ -31,6 +31,10 @@ function newEducation(): EducationEntry {
   };
 }
 
+function parseList(text: string): string[] {
+  return text.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 export function ProfileForm({
   initial,
   onSave,
@@ -40,6 +44,10 @@ export function ProfileForm({
 }) {
   const [profile, setProfile] = useState<ResumeProfile>(initial);
   const [saved, setSaved] = useState(false);
+  // Comma-separated lists keep raw text state: deriving the input value from
+  // the parsed array would eat the trailing comma as you type it.
+  const [skillsText, setSkillsText] = useState(initial.skills.join(", "));
+  const [certificationsText, setCertificationsText] = useState(initial.certifications.join(", "));
 
   function updateContact<K extends keyof ContactInfo>(key: K, value: ContactInfo[K]) {
     setProfile((p) => ({ ...p, contact: { ...p.contact, [key]: value } }));
@@ -131,12 +139,10 @@ export function ProfileForm({
         <label className={labelClass}>Comma-separated</label>
         <input
           className={inputClass}
-          value={profile.skills.join(", ")}
+          value={skillsText}
           onChange={(e) => {
-            setProfile((p) => ({
-              ...p,
-              skills: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-            }));
+            setSkillsText(e.target.value);
+            setProfile((p) => ({ ...p, skills: parseList(e.target.value) }));
             setSaved(false);
           }}
         />
@@ -286,6 +292,12 @@ export function ProfileForm({
                 value={ed.endDate}
                 onChange={(e) => updateEducation(ed.id, { endDate: e.target.value })}
               />
+              <input
+                className={inputClass}
+                placeholder="GPA (optional)"
+                value={ed.gpa ?? ""}
+                onChange={(e) => updateEducation(ed.id, { gpa: e.target.value })}
+              />
             </div>
             <button
               type="button"
@@ -309,12 +321,10 @@ export function ProfileForm({
         <label className={labelClass}>Comma-separated</label>
         <input
           className={inputClass}
-          value={profile.certifications.join(", ")}
+          value={certificationsText}
           onChange={(e) => {
-            setProfile((p) => ({
-              ...p,
-              certifications: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-            }));
+            setCertificationsText(e.target.value);
+            setProfile((p) => ({ ...p, certifications: parseList(e.target.value) }));
             setSaved(false);
           }}
         />
