@@ -27,11 +27,12 @@
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "host_permissions": [
     "*://*.myworkdayjobs.com/*",
+    "*://*.myworkday.com/*",
     "*://*.workday.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["*://*.myworkdayjobs.com/*", "*://*.workday.com/*"],
+      "matches": ["*://*.myworkdayjobs.com/*", "*://*.myworkday.com/*", "*://*.workday.com/*"],
       "js": ["content/workday.js"],
       "run_at": "document_idle",
       "all_frames": true
