@@ -75,6 +75,9 @@ async function handleMessage(message: RuntimeMessage) {
         const res = await fetch(`${origin.replace(/\/$/, "")}/api/answer-questions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // Without a deadline, a hung web app leaves the widget on
+          // "Drafting..." forever. LLM drafting takes 10-30s; 90s is generous.
+          signal: AbortSignal.timeout(90_000),
           body: JSON.stringify({
             job: pkg.job,
             summary: pkg.summary,
@@ -86,8 +89,13 @@ async function handleMessage(message: RuntimeMessage) {
         const data = await res.json();
         if (!res.ok) return { error: data.error ?? "Answer drafting failed." };
         return { answers: data.answers };
-      } catch {
-        return { error: "Couldn't reach the web app — is it running?" };
+      } catch (err) {
+        return {
+          error:
+            err instanceof Error && err.name === "TimeoutError"
+              ? "The web app took too long to respond — try again."
+              : "Couldn't reach the web app — is it running?",
+        };
       }
     }
     default:

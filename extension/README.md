@@ -13,7 +13,10 @@ the step you're currently on.
 npm install
 npm run build            # outputs to dist/
 npm run watch             # rebuild on change, for development
-npm run generate-icons     # regenerate icons/*.png (only needed if you edit the icon script)
+npm test                   # DOM-heuristics e2e: runs the real autofill code
+                           # against test/fixture.html in headless Chromium
+npm run package             # zip dist/ (minus source maps) for the Chrome Web Store
+npm run generate-icons       # regenerate icons/*.png (only needed if you edit the icon script)
 ```
 
 ## Load it in Chrome / Edge
