@@ -15,6 +15,11 @@ export async function POST(request: Request) {
   if (!body?.contact?.firstName) {
     return NextResponse.json({ error: "Missing resume data." }, { status: 400 });
   }
+  // Coarse guard: a resume is a few KB of text; refuse pathological payloads
+  // before handing them to the PDF renderer.
+  if (JSON.stringify(body).length > 300_000) {
+    return NextResponse.json({ error: "Resume payload is too large to render." }, { status: 413 });
+  }
 
   try {
     const element = createElement(ResumeDocument, body) as Parameters<typeof renderToBuffer>[0];

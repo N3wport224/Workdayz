@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { JobPosting, ResumeProfile } from "@/lib/types";
 import { tailorApplication, type TailorOptions } from "@/lib/tailor";
+import { shapeProfile, strArr } from "@/lib/request-shape";
 import { COVER_LETTER_TONES } from "@/lib/tones";
 
 export async function POST(request: Request) {
@@ -39,13 +40,13 @@ export async function POST(request: Request) {
     options.extraInstructions = body.options.extraInstructions.slice(0, 2000);
   }
   if (Array.isArray(body.options?.emphasisKeywords)) {
-    options.emphasisKeywords = body.options.emphasisKeywords
-      .filter((k): k is string => typeof k === "string")
+    options.emphasisKeywords = strArr(body.options.emphasisKeywords)
+      .map((k) => k.slice(0, 200))
       .slice(0, 30);
   }
 
   try {
-    const result = await tailorApplication(profile, job, options);
+    const result = await tailorApplication(shapeProfile(profile), job, options);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Tailoring failed.";

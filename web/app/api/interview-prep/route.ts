@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateInterviewPrep, type InterviewPrepInput } from "@/lib/interview-prep";
+import { shapeExperienceItems, strArr } from "@/lib/request-shape";
 
 export async function POST(request: Request) {
   let body: Partial<InterviewPrepInput>;
@@ -23,9 +24,9 @@ export async function POST(request: Request) {
     const prep = await generateInterviewPrep({
       job: body.job,
       summary: body.summary ?? "",
-      skills: Array.isArray(body.skills) ? body.skills : [],
-      experience: Array.isArray(body.experience) ? body.experience : [],
-      gaps: Array.isArray(body.gaps) ? body.gaps : undefined,
+      skills: strArr(body.skills),
+      experience: shapeExperienceItems(body.experience),
+      gaps: Array.isArray(body.gaps) ? strArr(body.gaps).slice(0, 10) : undefined,
     });
     return NextResponse.json({ prep });
   } catch (err) {

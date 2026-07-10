@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { answerQuestions, type AnswerQuestionsInput } from "@/lib/answer-questions";
+import { shapeExperienceItems, strArr } from "@/lib/request-shape";
 
 // Called cross-origin by the browser extension's background service worker
 // (which has explicit host permission for this origin), as well as by the
@@ -32,8 +33,8 @@ export async function POST(request: Request) {
     const answers = await answerQuestions({
       job: body.job,
       summary: body.summary ?? "",
-      skills: Array.isArray(body.skills) ? body.skills : [],
-      experience: Array.isArray(body.experience) ? body.experience : [],
+      skills: strArr(body.skills),
+      experience: shapeExperienceItems(body.experience),
       questions,
     });
     return NextResponse.json({ answers });
