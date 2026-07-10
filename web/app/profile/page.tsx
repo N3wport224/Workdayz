@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ProfileForm } from "@/components/ProfileForm";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
+import { sendProfileToExtension } from "@/lib/extension-bridge";
 import { emptyProfile, loadProfile, mergeProfile, saveProfile } from "@/lib/storage";
 import type { ResumeProfile } from "@/lib/types";
 
@@ -18,9 +19,14 @@ export default function ProfilePage() {
     setLoaded(true);
   }, []);
 
+  function persistProfile(next: ResumeProfile) {
+    saveProfile(next);
+    sendProfileToExtension(next);
+  }
+
   function replaceProfile(next: ResumeProfile) {
     setProfile(next);
-    saveProfile(next);
+    persistProfile(next);
     setFormKey((k) => k + 1); // remount ProfileForm so it picks up the new initial values
   }
 
@@ -85,7 +91,7 @@ export default function ProfilePage() {
         </div>
       </div>
       <ResumeImportPanel onImported={replaceProfile} />
-      <ProfileForm key={formKey} initial={profile} onSave={saveProfile} />
+      <ProfileForm key={formKey} initial={profile} onSave={persistProfile} />
     </main>
   );
 }

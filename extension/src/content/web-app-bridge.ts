@@ -1,4 +1,4 @@
-import { MESSAGE_TYPES, type AutofillPackage } from "../types";
+import { MESSAGE_TYPES, type AutofillPackage, type BaseProfile } from "../types";
 
 // Runs only on the web app's origin (dynamically registered by
 // background.ts once the user connects it from the popup). Relays
@@ -43,6 +43,13 @@ async function handle(data: { type?: string; payload?: unknown }) {
           window.location.origin,
         );
       }
+      break;
+    }
+    case MESSAGE_TYPES.profile: {
+      await chrome.runtime.sendMessage({
+        type: "STORE_PROFILE",
+        payload: data.payload as BaseProfile,
+      });
       break;
     }
     case MESSAGE_TYPES.requestScrapedJob: {

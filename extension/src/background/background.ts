@@ -1,4 +1,4 @@
-import { STORAGE_KEYS, type AutofillPackage, type JobPosting, type RuntimeMessage } from "../types";
+import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
 
 const BRIDGE_SCRIPT_ID = "workdayz-web-app-bridge";
 
@@ -50,6 +50,14 @@ async function handleMessage(message: RuntimeMessage) {
     case "GET_AUTOFILL_PACKAGE": {
       const data = await chrome.storage.local.get(STORAGE_KEYS.autofillPackage);
       return { pkg: (data[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined) ?? null };
+    }
+    case "STORE_PROFILE": {
+      await chrome.storage.local.set({ [STORAGE_KEYS.baseProfile]: message.payload });
+      return { ok: true };
+    }
+    case "GET_PROFILE": {
+      const data = await chrome.storage.local.get(STORAGE_KEYS.baseProfile);
+      return { profile: (data[STORAGE_KEYS.baseProfile] as BaseProfile | undefined) ?? null };
     }
     case "OPEN_APPLY_TAB": {
       const stored = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);

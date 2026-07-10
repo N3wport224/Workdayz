@@ -61,11 +61,23 @@ export interface AutofillPackage {
   atsScore: number;
 }
 
+// The base resume profile synced from the web app's /profile page — lets
+// contact/history autofill work before any job-specific package exists.
+export interface BaseProfile {
+  contact: ContactInfo;
+  summary: string;
+  skills: string[];
+  experience: ExperienceEntry[];
+  education: EducationEntry[];
+  certifications: string[];
+}
+
 // chrome.storage.local keys
 export const STORAGE_KEYS = {
   webAppOrigin: "workdayz.webAppOrigin",
   scrapedJob: "workdayz.scrapedJob",
   autofillPackage: "workdayz.autofillPackage",
+  baseProfile: "workdayz.baseProfile",
 } as const;
 
 // window.postMessage protocol with the web app (see web/lib/extension-bridge.ts)
@@ -75,6 +87,7 @@ export const MESSAGE_TYPES = {
   requestScrapedJob: "WORKDAYZ_REQUEST_SCRAPED_JOB",
   scrapedJob: "WORKDAYZ_SCRAPED_JOB",
   packageStored: "WORKDAYZ_PACKAGE_STORED",
+  profile: "WORKDAYZ_PROFILE",
   ping: "WORKDAYZ_PING",
 } as const;
 
@@ -87,7 +100,9 @@ export type RuntimeMessage =
   | { type: "OPEN_APPLY_TAB" }
   | { type: "REGISTER_WEB_APP_ORIGIN"; origin: string }
   | { type: "RUN_AUTOFILL" }
-  | { type: "ANSWER_QUESTIONS"; questions: string[] };
+  | { type: "ANSWER_QUESTIONS"; questions: string[] }
+  | { type: "STORE_PROFILE"; payload: BaseProfile }
+  | { type: "GET_PROFILE" };
 
 export interface QuestionAnswer {
   question: string;

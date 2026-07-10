@@ -155,15 +155,18 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
     }
   }
 
-  const resumeInput = findFileInputBySynonyms(["resume", "cv", "upload resume"], {
-    allowSoleFallback: true,
-  });
+  // A base-profile fill source has no generated PDFs — never attach empty files.
+  const resumeInput = pkg.resumePdfBase64
+    ? findFileInputBySynonyms(["resume", "cv", "upload resume"], { allowSoleFallback: true })
+    : null;
   if (resumeInput) {
     attachFileToInput(resumeInput, pkg.resumePdfBase64, pkg.resumeFileName);
     summary.filesAttached.push("resume");
   }
 
-  const coverLetterInput = findFileInputBySynonyms(["cover letter", "upload cover letter"]);
+  const coverLetterInput = pkg.coverLetterPdfBase64
+    ? findFileInputBySynonyms(["cover letter", "upload cover letter"])
+    : null;
   if (coverLetterInput && coverLetterInput !== resumeInput) {
     attachFileToInput(coverLetterInput, pkg.coverLetterPdfBase64, pkg.coverLetterFileName);
     summary.filesAttached.push("cover letter");

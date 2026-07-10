@@ -183,6 +183,18 @@ try {
 
   const nextBtn = await page.$eval('[data-automation-id="bottom-navigation-next-button"]', (el) => el.textContent);
   check("navigation button untouched", nextBtn === "Save and Continue");
+
+  // Profile-only fill source (no tailored package): contact fills, but no
+  // empty PDF may be attached to the resume input.
+  await page.reload();
+  await page.addScriptTag({ content: harnessJs });
+  const profilePkg = { ...pkg, coverLetterText: "", resumePdfBase64: "", resumeFileName: "", coverLetterPdfBase64: "", coverLetterFileName: "" };
+  await page.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), profilePkg);
+  check("profile-only: contact fills", (await val("#firstName")) === "Alex");
+  check(
+    "profile-only: no empty file attached",
+    (await page.$eval("#resumeUpload", (el) => el.files.length)) === 0,
+  );
 } finally {
   await browser.close();
 }

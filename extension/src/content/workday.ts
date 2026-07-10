@@ -1,4 +1,4 @@
-import type { AutofillPackage, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
+import type { AutofillPackage, BaseProfile, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
 import { addButton, mountWidget } from "./widget";
@@ -40,18 +40,56 @@ function initJobPostingWidget() {
   });
 }
 
-async function runAutofillNow(widget: { setStatus(text: string): void }) {
+/** Turns the synced base profile into a fill source: contact/history only —
+ * no tailored resume/cover letter files, no drafted content. */
+function packageFromProfile(profile: BaseProfile): AutofillPackage {
+  return {
+    version: 1,
+    createdAt: new Date().toISOString(),
+    job: { title: "", company: "", location: "", description: "" },
+    contact: profile.contact,
+    summary: profile.summary,
+    skills: profile.skills,
+    experience: profile.experience,
+    education: profile.education,
+    certifications: profile.certifications,
+    coverLetterText: "",
+    resumePdfBase64: "",
+    resumeFileName: "",
+    coverLetterPdfBase64: "",
+    coverLetterFileName: "",
+    atsScore: 0,
+  };
+}
+
+/** Prefer the job-specific tailored package; fall back to the base profile. */
+async function getFillSource(): Promise<{ pkg: AutofillPackage; tailored: boolean } | null> {
   const { pkg } = await sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" });
-  if (!pkg) {
-    widget.setStatus("No tailored application yet. Generate one in the Workdayz web app first.");
+  if (pkg) return { pkg, tailored: true };
+  const { profile } = await sendMessage<{ profile: BaseProfile | null }>({ type: "GET_PROFILE" });
+  if (profile) return { pkg: packageFromProfile(profile), tailored: false };
+  return null;
+}
+
+async function runAutofillNow(widget: { setStatus(text: string): void }) {
+  const source = await getFillSource();
+  if (!source) {
+    widget.setStatus("Nothing to fill from yet — save your resume profile in the Workdayz web app first.");
     return null;
   }
-  widget.setStatus(`Filling from "${pkg.job.title}" at ${pkg.job.company} (ATS ${pkg.atsScore}/100)...`);
-  const result = await runAutofill(pkg);
+  widget.setStatus(
+    source.tailored
+      ? `Filling from "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100)...`
+      : "Filling from your base profile...",
+  );
+  const result = await runAutofill(source.pkg);
   const parts = [`Filled ${result.filled.length} field group(s)`];
   if (result.filesAttached.length) parts.push(`attached ${result.filesAttached.join(" & ")}`);
   if (result.skipped.length) parts.push(`couldn't find: ${result.skipped.join(", ")}`);
-  widget.setStatus(`${parts.join(". ")}. Review before continuing — nothing is submitted automatically.`);
+  const suffix = source.tailored
+    ? "Review before continuing — nothing is submitted automatically."
+    : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
+  widget.setStatus(`${parts.join(". ")}. ${suffix}`);
   return result;
 }
 
@@ -59,11 +97,13 @@ function initApplicationFormWidget() {
   const widget = mountWidget("Workdayz");
   widget.setStatus("Checking for a tailored application...");
 
-  sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }).then(({ pkg }) => {
+  getFillSource().then((source) => {
     widget.setStatus(
-      pkg
-        ? `Ready: "${pkg.job.title}" at ${pkg.job.company} (ATS ${pkg.atsScore}/100).`
-        : "No tailored application yet. Generate one in the Workdayz web app first.",
+      source === null
+        ? "Nothing to fill from yet — save your resume profile in the Workdayz web app first."
+        : source.tailored
+          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).`
+          : "Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.",
     );
   });
 
@@ -153,12 +193,12 @@ new MutationObserver(scheduleEvaluate).observe(document.body, { childList: true,
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   if (message.type === "RUN_AUTOFILL") {
     if (!looksLikeApplicationForm()) return false;
-    sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }).then(async ({ pkg }) => {
-      if (!pkg) {
+    getFillSource().then(async (source) => {
+      if (!source) {
         sendResponse({ filled: [], skipped: [], filesAttached: [] });
         return;
       }
-      sendResponse(await runAutofill(pkg));
+      sendResponse(await runAutofill(source.pkg));
     });
     return true;
   }

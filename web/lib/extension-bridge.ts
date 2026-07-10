@@ -1,6 +1,6 @@
 "use client";
 
-import type { AutofillPackage, JobPosting } from "./types";
+import type { AutofillPackage, JobPosting, ResumeProfile } from "./types";
 
 // Message protocol shared with extension/src/content/web-app-bridge.ts.
 // The extension's bridge content script only runs on the web app's own
@@ -11,6 +11,17 @@ export const AUTOFILL_PACKAGE_TYPE = "WORKDAYZ_AUTOFILL_PACKAGE";
 export const REQUEST_SCRAPED_JOB_TYPE = "WORKDAYZ_REQUEST_SCRAPED_JOB";
 export const SCRAPED_JOB_TYPE = "WORKDAYZ_SCRAPED_JOB";
 export const PACKAGE_STORED_TYPE = "WORKDAYZ_PACKAGE_STORED";
+export const PROFILE_TYPE = "WORKDAYZ_PROFILE";
+
+/** Syncs the base resume profile to the extension so contact/work-history
+ * autofill works even before a job-specific package has been generated.
+ * Harmless no-op when the extension isn't installed. */
+export function sendProfileToExtension(profile: ResumeProfile) {
+  window.postMessage(
+    { source: "workdayz-web", type: PROFILE_TYPE, payload: profile },
+    window.location.origin,
+  );
+}
 
 /** Fires when the extension confirms it persisted an autofill package. */
 export function onPackageStored(callback: () => void) {
