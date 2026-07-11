@@ -123,9 +123,9 @@ track its status over time.
 - **Editable output** — tweak the tailored summary and skills inline before
   exporting; cover-letter draft history with one-click restore of any
   previous draft.
-- **Cost transparency** — every AI run reports its estimated API cost plus
-  a lifetime total for this browser; rate-limit/overload/credit errors come
-  back as actionable messages instead of generic failures.
+- **Cost transparency** — every tailoring run reports its estimated API
+  cost plus a lifetime total for this browser; rate-limit/overload/credit
+  errors come back as actionable messages instead of generic failures.
 - **Tracker board view** — kanban-style status columns alongside the list
   view, per-application status timeline, "open original posting" links,
   archive (single or bulk-archive rejected), and an overdue follow-up nudge

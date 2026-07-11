@@ -25,10 +25,13 @@ export async function POST(request: Request) {
   try {
     const element = createElement(CoverLetterDocument, body) as Parameters<typeof renderToBuffer>[0];
     const buffer = await renderToBuffer(element);
+    // A fully non-ASCII company name sanitizes to "" — skip the suffix then,
+    // rather than emitting "Cover_Letter_.pdf".
+    const companyPart = body.companyName ? safeFilenamePart(body.companyName, "") : "";
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Cover_Letter${body.companyName ? `_${safeFilenamePart(body.companyName, "")}` : ""}.pdf"`,
+        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Cover_Letter${companyPart ? `_${companyPart}` : ""}.pdf"`,
       },
     });
   } catch (err) {

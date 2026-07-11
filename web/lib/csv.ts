@@ -17,9 +17,11 @@ export function applicationsToCsv(applications: SavedApplication[]): string {
     "Company",
     "Location",
     "Status",
+    "Archived",
     "ATS score",
     "Tailored",
     "Last updated",
+    "Follow up by",
     "Source URL",
     "Notes",
   ];
@@ -28,9 +30,11 @@ export function applicationsToCsv(applications: SavedApplication[]): string {
     a.job.company,
     a.job.location,
     a.status,
+    a.archived ? "yes" : "",
     String(a.atsScore.score),
     a.createdAt,
     a.updatedAt,
+    a.followUpAt ?? "",
     a.job.sourceUrl ?? "",
     a.notes ?? "",
   ]);

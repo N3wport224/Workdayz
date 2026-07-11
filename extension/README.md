@@ -74,9 +74,13 @@ This means:
   the extension types the value, waits for the filtered options, and clicks
   the match — clearing the input again if nothing matches, so Workday isn't
   left with an uncommitted value.
-- If fields go unmatched on your tenant, click **Copy field report** on the
-  widget — it copies the page's field labels (no personal data) so the
-  synonym lists can be extended for that tenant.
+- If fields go unmatched on your tenant, you have two remedies: add a
+  **custom answer** in the extension popup (one per line, e.g.
+  `Desired salary = 85000` — any field whose label contains the left side
+  gets filled with the right side; self-identification fields are always
+  refused), or click **Copy field report** on the widget — it copies the
+  page's field labels (no personal data) so the synonym lists can be
+  extended for that tenant.
 - Repeatable multi-entry sections (work history, education) are filled
   **best-effort**: it fills however many panels are *already rendered* on
   the page, matched to your profile entries in order, but it does not click
@@ -85,8 +89,10 @@ This means:
   Experience"/"Add Another Education" yourself, then re-run autofill to fill
   the newly added panel(s).
 - The extension re-scans the page automatically as Workday's SPA transitions
-  between a job posting and the application form (via a `MutationObserver` +
-  patched History API), so you generally don't need to reload the tab. It
+  between a job posting and the application form (via a `MutationObserver`
+  plus `popstate`/`hashchange` — content scripts run in an isolated world,
+  so patching the page's History API wouldn't work), so you generally don't
+  need to reload the tab. It
   also runs in all frames in case a tenant embeds the apply flow in an
   iframe.
 - The extension is deliberately scoped to PUBLIC Workday career sites
