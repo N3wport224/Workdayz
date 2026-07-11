@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { JobPosting, ResumeProfile } from "@/lib/types";
 import { tailorApplication, type TailorOptions } from "@/lib/tailor";
 import { shapeProfile, strArr } from "@/lib/request-shape";
-import { COVER_LETTER_TONES } from "@/lib/tones";
+import { COVER_LETTER_LENGTHS, COVER_LETTER_TONES } from "@/lib/tones";
 
 export async function POST(request: Request) {
   let body: { profile?: ResumeProfile; job?: JobPosting; options?: TailorOptions };
@@ -35,6 +35,9 @@ export async function POST(request: Request) {
   const options: TailorOptions = {};
   if (body.options?.tone && body.options.tone in COVER_LETTER_TONES) {
     options.tone = body.options.tone;
+  }
+  if (body.options?.length && body.options.length in COVER_LETTER_LENGTHS) {
+    options.length = body.options.length;
   }
   if (typeof body.options?.extraInstructions === "string") {
     options.extraInstructions = body.options.extraInstructions.slice(0, 2000);

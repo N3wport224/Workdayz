@@ -188,6 +188,18 @@ try {
   const nextBtn = await page.$eval('[data-automation-id="bottom-navigation-next-button"]', (el) => el.textContent);
   check("navigation button untouched", nextBtn === "Save and Continue");
 
+  check(
+    "self-ID question surfaced as left-for-you, never filled",
+    summary.leftForYou.some((l) => l.toLowerCase().includes("veteran")) &&
+      (await val("#veteran")) === "",
+    JSON.stringify(summary.leftForYou),
+  );
+  check(
+    "prefilled email mismatch flagged",
+    summary.mismatches.some((m) => m.startsWith("email")),
+    JSON.stringify(summary.mismatches),
+  );
+
   // Profile-only fill source (no tailored package): contact fills, but no
   // empty PDF may be attached to the resume input.
   await page.reload();
@@ -199,6 +211,10 @@ try {
     "profile-only: no empty file attached",
     (await page.$eval("#resumeUpload", (el) => el.files.length)) === 0,
   );
+
+  // Undo restores everything the last run wrote.
+  const restored = await page.evaluate(() => window.WorkdayzTest.undoFill());
+  check("undo restores fields", restored > 0 && (await val("#firstName")) === "", `restored=${restored}, firstName="${await val("#firstName")}"`);
 } finally {
   await browser.close();
 }

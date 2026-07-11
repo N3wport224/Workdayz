@@ -24,6 +24,12 @@
     "type": "module"
   },
   "permissions": ["storage", "scripting"],
+  "commands": {
+    "run-autofill": {
+      "suggested_key": { "default": "Alt+Shift+F" },
+      "description": "Autofill the current Workday application step"
+    }
+  },
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "host_permissions": [
     "*://*.myworkdayjobs.com/*"

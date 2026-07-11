@@ -1,5 +1,8 @@
 // Minimal shadow-DOM floating widget so our styles never leak into (or
-// clash with) the host page's CSS.
+// clash with) the host page's CSS. Collapsible to a small bubble; the
+// collapsed state persists via chrome.storage.local.
+
+const COLLAPSED_KEY = "workdayz.widgetCollapsed";
 
 export interface Widget {
   root: HTMLElement;
@@ -29,9 +32,15 @@ export function mountWidget(title: string): Widget {
         min-width: 220px;
         max-width: 300px;
       }
-      .title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+      .titleRow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+      .title { font-weight: 600; font-size: 13px; }
+      .collapseBtn {
+        background: none; border: none; color: #9ca3af; cursor: pointer;
+        font-size: 14px; padding: 0 2px; line-height: 1;
+      }
+      .collapseBtn:hover { color: #f9fafb; }
       .status { font-size: 12px; opacity: 0.85; margin-bottom: 8px; line-height: 1.4; }
-      button {
+      button.action {
         font-family: inherit;
         font-size: 12px;
         font-weight: 600;
@@ -42,21 +51,61 @@ export function mountWidget(title: string): Widget {
         padding: 8px 10px;
         cursor: pointer;
         width: 100%;
+        margin-bottom: 6px;
       }
-      button:hover { background: #1d4ed8; }
-      button:disabled { opacity: 0.5; cursor: default; }
+      button.action:hover { background: #1d4ed8; }
+      button.action:disabled { opacity: 0.5; cursor: default; }
+      .bubble {
+        width: 40px; height: 40px; border-radius: 50%;
+        background: #2563eb; color: white; border: none; cursor: pointer;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-weight: 700; font-size: 15px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        display: none;
+      }
+      .hidden { display: none; }
+      .bubble.shown { display: block; }
     </style>
-    <div class="panel">
-      <div class="title" id="title"></div>
+    <div class="panel" id="panel">
+      <div class="titleRow">
+        <div class="title" id="title"></div>
+        <button class="collapseBtn" id="collapse" title="Minimize">—</button>
+      </div>
       <div class="status" id="status">Loading...</div>
       <div id="actions"></div>
     </div>
+    <button class="bubble" id="bubble" title="Open Workdayz">W</button>
   `;
 
   // textContent, not template interpolation — keeps this safe even if a
   // future caller ever passes non-constant text.
   shadow.getElementById("title")!.textContent = title;
   const statusEl = shadow.getElementById("status")!;
+  const panel = shadow.getElementById("panel")!;
+  const bubble = shadow.getElementById("bubble")!;
+
+  function setCollapsed(collapsed: boolean, persist: boolean) {
+    panel.classList.toggle("hidden", collapsed);
+    bubble.classList.toggle("shown", collapsed);
+    if (persist) {
+      try {
+        chrome.storage.local.set({ [COLLAPSED_KEY]: collapsed });
+      } catch {
+        /* orphaned script */
+      }
+    }
+  }
+
+  shadow.getElementById("collapse")!.addEventListener("click", () => setCollapsed(true, true));
+  bubble.addEventListener("click", () => setCollapsed(false, true));
+
+  try {
+    chrome.storage.local.get(COLLAPSED_KEY).then((data) => {
+      if (data[COLLAPSED_KEY]) setCollapsed(true, false);
+    });
+  } catch {
+    /* orphaned script */
+  }
 
   return {
     root: shadow.getElementById("actions") as unknown as HTMLElement,
@@ -68,6 +117,7 @@ export function mountWidget(title: string): Widget {
 
 export function addButton(container: HTMLElement, label: string, onClick: () => void): HTMLButtonElement {
   const btn = document.createElement("button");
+  btn.className = "action";
   btn.textContent = label;
   btn.addEventListener("click", onClick);
   container.appendChild(btn);

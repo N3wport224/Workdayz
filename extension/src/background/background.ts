@@ -33,6 +33,20 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
   return true; // keep the message channel open for the async response
 });
 
+// Keyboard shortcut (Alt+Shift+F by default, remappable at
+// chrome://extensions/shortcuts): trigger autofill on the active tab. The
+// widget on the page shows the result; errors just mean no content script.
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "run-autofill") return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOFILL" });
+  } catch {
+    /* not a Workday page */
+  }
+});
+
 async function handleMessage(message: RuntimeMessage) {
   switch (message.type) {
     case "STORE_SCRAPED_JOB": {

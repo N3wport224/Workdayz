@@ -1,7 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { analyzeBullet } from "@/lib/bullet-strength";
 import type { ContactInfo, EducationEntry, ResumeProfile, WorkExperience } from "@/lib/types";
+
+function BulletStrengthDot({ bullet }: { bullet: string }) {
+  if (!bullet.trim()) return null;
+  const { rating, tips } = analyzeBullet(bullet);
+  const color =
+    rating === "strong" ? "bg-emerald-500" : rating === "ok" ? "bg-amber-500" : "bg-rose-500";
+  return (
+    <span
+      title={tips.length ? tips.join("\n") : "Strong bullet: action verb + quantified result."}
+      className={`inline-block w-2.5 h-2.5 rounded-full mt-2.5 shrink-0 cursor-help ${color}`}
+    />
+  );
+}
 
 const inputClass =
   "w-full rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -201,7 +215,8 @@ export function ProfileForm({
             <div>
               <label className={labelClass}>Bullets (your real accomplishments — the tailoring engine will only rephrase these, never invent new ones)</label>
               {exp.bullets.map((b, i) => (
-                <div key={i} className="flex gap-2 mb-1">
+                <div key={i} className="flex gap-2 mb-1 items-start">
+                  <BulletStrengthDot bullet={b} />
                   <input
                     className={inputClass}
                     value={b}
@@ -209,7 +224,7 @@ export function ProfileForm({
                   />
                   <button
                     type="button"
-                    className="text-xs opacity-60 hover:opacity-100"
+                    className="text-xs opacity-60 hover:opacity-100 mt-2"
                     onClick={() =>
                       updateExperience(exp.id, {
                         bullets: exp.bullets.filter((_, idx) => idx !== i),
@@ -220,6 +235,9 @@ export function ProfileForm({
                   </button>
                 </div>
               ))}
+              <p className="text-[11px] opacity-50 mb-1">
+                Dots rate each bullet (hover for tips): green = action verb + quantified result.
+              </p>
               <button
                 type="button"
                 className="text-xs text-blue-600 dark:text-blue-400"

@@ -15,8 +15,21 @@ import {
   findPanelContainer,
   setCheckbox,
   setFieldValue,
+  startFillLog,
   type FillableElement,
 } from "./dom-utils";
+
+// Self-identification and similar personal questions are NEVER autofilled or
+// auto-drafted — they're the applicant's alone to answer.
+const PERSONAL_PATTERNS = [
+  "veteran", "disability", "disabilities", "gender", "race", "ethnic",
+  "sexual orientation", "lgbt", "self identify", "self-identify", "pronouns",
+];
+
+function isPersonalField(label: string): boolean {
+  const lower = label.toLowerCase();
+  return PERSONAL_PATTERNS.some((p) => lower.includes(p));
+}
 
 const CONTACT_SYNONYMS: [keyof AutofillPackage["contact"], string[]][] = [
   ["firstName", ["first name", "legal first name", "given name"]],
@@ -135,8 +148,23 @@ function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
  * per step, which doubles as their review checkpoint.
  */
 export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSummary> {
-  const summary: AutofillRunSummary = { filled: [], skipped: [], filesAttached: [] };
+  const summary: AutofillRunSummary = {
+    filled: [],
+    skipped: [],
+    filesAttached: [],
+    leftForYou: [],
+    mismatches: [],
+  };
+  startFillLog();
   const fields = findFillableFields();
+
+  // Surface (never touch) self-identification questions on this step.
+  for (const el of fields) {
+    const raw = fieldLabelText(el);
+    if (raw && isPersonalField(raw)) {
+      summary.leftForYou.push(raw.slice(0, 60));
+    }
+  }
 
   for (const [key, synonyms] of CONTACT_SYNONYMS) {
     const value = pkg.contact[key];
@@ -145,6 +173,13 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
     if (field) {
       setFieldValue(field, value);
       summary.filled.push(key);
+      continue;
+    }
+    // Field exists but is already filled: don't overwrite, but flag when the
+    // employer-prefilled value differs from the profile (stale phone, etc.).
+    const prefilled = findFieldBySynonyms(fields, synonyms, { onlyEmpty: false });
+    if (prefilled && prefilled.value?.trim() && prefilled.value.trim() !== value.trim()) {
+      summary.mismatches.push(`${key}: form has "${prefilled.value.trim().slice(0, 40)}", profile has "${value.slice(0, 40)}"`);
       continue;
     }
     // No text input matched — Workday renders country/state/phone-type as
@@ -257,6 +292,7 @@ export function findQuestionFields(): QuestionField[] {
     const raw = fieldLabelText(el).trim();
     if (!raw || raw.length < 12) continue;
     if (/cover letter/i.test(raw)) continue;
+    if (isPersonalField(raw)) continue; // self-ID questions are never auto-drafted
     if (isTextarea || raw.includes("?")) {
       results.push({ label: raw.slice(0, 300), el });
     }

@@ -128,6 +128,8 @@ export interface SavedApplication {
   interviewPrep?: InterviewPrep;
   notes?: string;
   statusHistory?: { status: ApplicationStatus; at: string }[];
+  /** ISO date (yyyy-mm-dd) to follow up by; overdue entries get flagged. */
+  followUpAt?: string;
 }
 
 // The package handed off to the browser extension for autofilling Workday.

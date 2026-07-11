@@ -85,7 +85,21 @@ track its status over time.
   review and edit in place. Questions only you can answer (salary, work
   authorization, relocation) come back as explicit "[NEEDS YOUR INPUT]"
   placeholders, never guesses.
-- **CSV export** — download the tracker as a spreadsheet.
+- **CSV export** — download the tracker as a spreadsheet, plus full JSON
+  backup/restore.
+- **Outreach messages** — per application, draft a thank-you email,
+  follow-up email, or recruiter LinkedIn DM grounded in your real background.
+- **Tracker workflow** — search/filter/sort, follow-up reminder dates with
+  overdue flags, application velocity stats, time-in-stage.
+- **Writing quality tools** — profile completeness meter, per-bullet
+  strength ratings (action verb / quantified / length), cover letter tone
+  AND length controls, one-click "different angle" letter rewrites,
+  estimated resume page count, clickable missed-keyword chips.
+- **Autofill safety & control** — undo the last fill, flash-highlight on
+  every filled field, self-identification questions (veteran/disability/
+  gender/race) always left to you and reported, prefilled-value mismatch
+  warnings (e.g. the form has an old phone number), keyboard shortcut
+  (Alt+Shift+F), collapsible on-page widget.
 
 ## Safety notes
 

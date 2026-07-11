@@ -1,3 +1,5 @@
+"use client";
+
 import type { AtsScoreBreakdown } from "@/lib/types";
 
 function scoreColor(score: number): string {
@@ -6,7 +8,13 @@ function scoreColor(score: number): string {
   return "bg-rose-500";
 }
 
-export function AtsScoreMeter({ ats }: { ats: AtsScoreBreakdown }) {
+export function AtsScoreMeter({
+  ats,
+  onMissingKeywordClick,
+}: {
+  ats: AtsScoreBreakdown;
+  onMissingKeywordClick?: (keyword: string) => void;
+}) {
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
       <div className="flex items-baseline justify-between mb-2">
@@ -37,15 +45,27 @@ export function AtsScoreMeter({ ats }: { ats: AtsScoreBreakdown }) {
         <div>
           <p className="font-medium mb-1">Missing keywords ({ats.missingKeywords.length})</p>
           <div className="flex flex-wrap gap-1">
-            {ats.missingKeywords.map((k) => (
-              <span
-                key={k}
-                className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs"
-              >
-                {k}
-              </span>
-            ))}
+            {ats.missingKeywords.map((k) =>
+              onMissingKeywordClick ? (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => onMissingKeywordClick(k)}
+                  title="Click to add an emphasis instruction for the next rewrite"
+                  className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs hover:bg-rose-500/30 cursor-pointer"
+                >
+                  {k} +
+                </button>
+              ) : (
+                <span key={k} className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 text-xs">
+                  {k}
+                </span>
+              ),
+            )}
           </div>
+          {onMissingKeywordClick && ats.missingKeywords.length ? (
+            <p className="text-xs opacity-50 mt-1">Click a keyword to emphasize it in the next rewrite.</p>
+          ) : null}
         </div>
       </div>
       {ats.formattingIssues.length ? (

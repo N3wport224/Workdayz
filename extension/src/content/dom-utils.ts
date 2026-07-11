@@ -320,13 +320,67 @@ export function findCheckboxBySynonyms(container: ParentNode, synonyms: string[]
 
 export function setCheckbox(el: HTMLInputElement, checked: boolean): void {
   if (el.checked === checked) return;
+  if (fillLog && !restoring) fillLog.push({ el, kind: "checkbox", prev: el.checked ? "1" : "0" });
   el.click();
+  if (!restoring) flashField(el);
+}
+
+// --- fill log: lets the user undo everything the last autofill wrote ---
+
+interface FillLogEntry {
+  el: HTMLElement;
+  kind: "value" | "checkbox";
+  prev: string;
+}
+
+let fillLog: FillLogEntry[] | null = null;
+let restoring = false;
+
+/** Start recording field writes so they can be undone. */
+export function startFillLog(): void {
+  fillLog = [];
+}
+
+/** Reverts every field the last autofill wrote (text/select/checkbox — not
+ * listbox/combobox option clicks, which Workday commits immediately).
+ * Returns how many fields were restored. */
+export function undoFill(): number {
+  if (!fillLog?.length) return 0;
+  const entries = [...fillLog].reverse();
+  restoring = true;
+  try {
+    for (const entry of entries) {
+      if (entry.kind === "checkbox") {
+        const cb = entry.el as HTMLInputElement;
+        if (cb.checked !== (entry.prev === "1")) cb.click();
+      } else {
+        setFieldValue(entry.el as FillableElement, entry.prev);
+      }
+    }
+  } finally {
+    restoring = false;
+  }
+  fillLog = [];
+  return entries.length;
+}
+
+/** Brief visual pulse so the user can see exactly what just got filled. */
+function flashField(el: HTMLElement): void {
+  const original = el.style.outline;
+  el.style.outline = "2px solid #2563eb";
+  el.style.outlineOffset = "1px";
+  window.setTimeout(() => {
+    el.style.outline = original;
+    el.style.outlineOffset = "";
+  }, 1200);
 }
 
 /** Sets a value through the element's native setter so framework-controlled
  * inputs (which override the plain `value` property) still pick it up, then
  * fires the events most JS form frameworks listen for. */
 export function setFieldValue(el: FillableElement, value: string): void {
+  if (fillLog && !restoring) fillLog.push({ el, kind: "value", prev: el.value ?? "" });
+
   const prototype = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
 
@@ -344,6 +398,7 @@ export function setFieldValue(el: FillableElement, value: string): void {
   el.dispatchEvent(new Event("input", { bubbles: true }));
   el.dispatchEvent(new Event("change", { bubbles: true }));
   el.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+  if (!restoring) flashField(el);
 }
 
 export function findFileInputBySynonyms(

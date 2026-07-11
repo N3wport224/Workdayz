@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AtsScoreMeter } from "@/components/AtsScoreMeter";
 import { hasProfile, loadProfile } from "@/lib/storage";
-import { getApplication, upsertApplication } from "@/lib/applications";
+import { getApplication, loadApplications, upsertApplication } from "@/lib/applications";
+import { estimateResumePages } from "@/lib/resume-length";
 import {
   fetchPdfAsBase64,
   onExtensionDetected,
@@ -12,7 +13,13 @@ import {
   onScrapedJob,
   sendPackageToExtension,
 } from "@/lib/extension-bridge";
-import { TONE_LABELS, type CoverLetterTone } from "@/lib/tones";
+import {
+  COVER_LETTER_TONES,
+  LENGTH_LABELS,
+  TONE_LABELS,
+  type CoverLetterLength,
+  type CoverLetterTone,
+} from "@/lib/tones";
 import type { AutofillPackage, JobPosting, ResumeProfile, TailorResult } from "@/lib/types";
 
 const inputClass =
@@ -20,6 +27,28 @@ const inputClass =
 const labelClass = "text-xs font-medium opacity-70 mb-1 block";
 
 const emptyJob: JobPosting = { title: "", company: "", location: "", description: "", sourceUrl: "" };
+
+const DRAFT_KEY = "workdayz.applyDraft.v1";
+
+interface ApplyDraft {
+  job: JobPosting;
+  tone: CoverLetterTone;
+  length: CoverLetterLength;
+  extraInstructions: string;
+}
+
+function jdWarnings(description: string): string[] {
+  const warnings: string[] = [];
+  const trimmed = description.trim();
+  if (!trimmed) return warnings;
+  if (trimmed.length < 300) {
+    warnings.push("This description is quite short — the tailoring quality depends on it. Paste the full posting if there's more.");
+  }
+  if (/(show more|see more|read more|…|\.\.\.)$/i.test(trimmed.slice(-40))) {
+    warnings.push("The description looks truncated (ends with a 'show more' marker) — expand the posting and re-copy it.");
+  }
+  return warnings;
+}
 
 export default function ApplyPage() {
   const [profile, setProfile] = useState<ResumeProfile | null>(null);
@@ -32,12 +61,30 @@ export default function ApplyPage() {
   const [handoffStatus, setHandoffStatus] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [tone, setTone] = useState<CoverLetterTone>("professional");
+  const [length, setLength] = useState<CoverLetterLength>("standard");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [dupeNote, setDupeNote] = useState<string | null>(null);
+  const [letterLoading, setLetterLoading] = useState(false);
   const applicationIdRef = useRef<string>(crypto.randomUUID());
   const lastJobKeyRef = useRef<string>("");
+  const draftLoadedRef = useRef(false);
 
   useEffect(() => {
     setProfile(loadProfile());
+    // Restore an in-progress form (survives refreshes/accidental closes).
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as ApplyDraft;
+        if (draft.job?.title || draft.job?.description) setJob({ ...emptyJob, ...draft.job });
+        if (draft.tone) setTone(draft.tone);
+        if (draft.length) setLength(draft.length);
+        if (typeof draft.extraInstructions === "string") setExtraInstructions(draft.extraInstructions);
+      }
+    } catch {
+      /* corrupt draft — start fresh */
+    }
+    draftLoadedRef.current = true;
     const offExt = onExtensionDetected(setExtensionPresent);
     const offJob = onScrapedJob((scraped) => {
       setJob(scraped);
@@ -58,6 +105,16 @@ export default function ApplyPage() {
     };
   }, []);
 
+  // Autosave the form so a refresh never loses a pasted job description.
+  useEffect(() => {
+    if (!draftLoadedRef.current) return;
+    try {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify({ job, tone, length, extraInstructions }));
+    } catch {
+      /* quota — skip */
+    }
+  }, [job, tone, length, extraInstructions]);
+
   async function handleTailor(e: React.FormEvent | null, emphasisKeywords?: string[]) {
     e?.preventDefault();
     if (!profile) return;
@@ -68,6 +125,18 @@ export default function ApplyPage() {
       applicationIdRef.current = crypto.randomUUID();
       lastJobKeyRef.current = jobKey;
     }
+    // Heads-up (not a blocker) if this job already has a tracker entry.
+    const dupe = loadApplications().find(
+      (a) =>
+        a.id !== applicationIdRef.current &&
+        a.job.title.trim().toLowerCase() === job.title.trim().toLowerCase() &&
+        a.job.company.trim().toLowerCase() === job.company.trim().toLowerCase(),
+    );
+    setDupeNote(
+      dupe
+        ? `Heads up: you already tailored "${dupe.job.title}" at ${dupe.job.company} on ${new Date(dupe.createdAt).toLocaleDateString()} (status: ${dupe.status}). This run creates a separate entry.`
+        : null,
+    );
     setLoading(true);
     setError(null);
     setResult(null);
@@ -79,7 +148,7 @@ export default function ApplyPage() {
         body: JSON.stringify({
           profile,
           job,
-          options: { tone, extraInstructions, emphasisKeywords },
+          options: { tone, length, extraInstructions, emphasisKeywords },
         }),
       });
       const data = await res.json();
@@ -93,6 +162,38 @@ export default function ApplyPage() {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** Re-runs tailoring but only swaps in the fresh cover letter — for when
+   * the resume is right but the letter needs another take. */
+  async function regenerateCoverLetter() {
+    if (!profile || !result) return;
+    setLetterLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          job,
+          options: {
+            tone,
+            length,
+            extraInstructions: `${extraInstructions}\nWrite a cover letter with a noticeably different angle/opening than a previous draft would use.`.trim(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cover letter regeneration failed.");
+      const fresh = (data as TailorResult).coverLetter;
+      setCoverLetter(fresh);
+      persistSnapshot(result, fresh);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLetterLoading(false);
     }
   }
 
@@ -277,8 +378,13 @@ export default function ApplyPage() {
             onChange={(e) => setJob((j) => ({ ...j, description: e.target.value }))}
             required
           />
+          {jdWarnings(job.description).map((w, i) => (
+            <p key={i} className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+              ⚠ {w}
+            </p>
+          ))}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className={labelClass}>Cover letter tone</label>
             <select
@@ -289,6 +395,21 @@ export default function ApplyPage() {
               {(Object.keys(TONE_LABELS) as CoverLetterTone[]).map((t) => (
                 <option key={t} value={t}>
                   {TONE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs opacity-50 mt-1">{COVER_LETTER_TONES[tone]}</p>
+          </div>
+          <div>
+            <label className={labelClass}>Cover letter length</label>
+            <select
+              className={inputClass}
+              value={length}
+              onChange={(e) => setLength(e.target.value as CoverLetterLength)}
+            >
+              {(Object.keys(LENGTH_LABELS) as CoverLetterLength[]).map((l) => (
+                <option key={l} value={l}>
+                  {LENGTH_LABELS[l]}
                 </option>
               ))}
             </select>
@@ -303,6 +424,7 @@ export default function ApplyPage() {
             />
           </div>
         </div>
+        {dupeNote ? <p className="text-xs text-amber-700 dark:text-amber-300">{dupeNote}</p> : null}
         <button
           type="submit"
           disabled={loading}
@@ -317,7 +439,12 @@ export default function ApplyPage() {
 
       {result ? (
         <div className="space-y-6">
-          <AtsScoreMeter ats={result.atsScore} />
+          <AtsScoreMeter
+            ats={result.atsScore}
+            onMissingKeywordClick={(k) =>
+              setExtraInstructions((prev) => (prev.includes(k) ? prev : prev ? `${prev}; emphasize "${k}"` : `Emphasize "${k}"`))
+            }
+          />
 
           {result.fitAnalysis.verdict ? (
             <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
@@ -360,9 +487,24 @@ export default function ApplyPage() {
           ) : null}
 
           <section>
-            <h2 className="text-lg font-semibold mb-2">Tailored resume preview</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Tailored resume preview</h2>
+              <span className="text-xs opacity-60">
+                est. {estimateResumePages({
+                  summary: result.tailoredResume.summary,
+                  skills: result.tailoredResume.skills,
+                  experience: mergedExperience(profile!, result),
+                  education: profile?.education ?? [],
+                  certifications: profile?.certifications ?? [],
+                })}{" "}
+                page(s)
+              </span>
+            </div>
             <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 text-sm space-y-3">
-              <p className="opacity-80">{result.tailoredResume.summary}</p>
+              <div className="flex items-start justify-between gap-2">
+                <p className="opacity-80">{result.tailoredResume.summary}</p>
+                <CopyButton text={result.tailoredResume.summary} />
+              </div>
               <p>
                 <span className="font-medium">Skills: </span>
                 {result.tailoredResume.skills.join(", ")}
@@ -379,6 +521,18 @@ export default function ApplyPage() {
                         <li key={i}>{b}</li>
                       ))}
                     </ul>
+                    {source ? (
+                      <details className="mt-1">
+                        <summary className="text-xs opacity-50 cursor-pointer">
+                          View your original bullets for this role
+                        </summary>
+                        <ul className="list-disc list-inside opacity-60 text-xs mt-1">
+                          {source.bullets.map((b, i) => (
+                            <li key={i}>{b}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                   </div>
                 );
               })}
@@ -386,7 +540,19 @@ export default function ApplyPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold mb-2">Cover letter (editable)</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Cover letter (editable)</h2>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={regenerateCoverLetter}
+                  disabled={letterLoading || loading}
+                  className="text-xs text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                >
+                  {letterLoading ? "Rewriting..." : "↻ New draft (different angle)"}
+                </button>
+                <CopyButton text={coverLetter} />
+              </div>
+            </div>
             <textarea
               className={inputClass}
               rows={14}
@@ -428,6 +594,27 @@ export default function ApplyPage() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard blocked */
+        }
+      }}
+      className="text-xs opacity-60 hover:opacity-100 shrink-0"
+    >
+      {copied ? "Copied ✓" : "Copy"}
+    </button>
   );
 }
 

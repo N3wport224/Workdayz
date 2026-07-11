@@ -113,4 +113,8 @@ export interface AutofillRunSummary {
   filled: string[];
   skipped: string[];
   filesAttached: string[];
+  /** Self-identification / personal questions deliberately left untouched. */
+  leftForYou: string[];
+  /** Prefilled form values that differ from the profile (e.g. an old phone). */
+  mismatches: string[];
 }

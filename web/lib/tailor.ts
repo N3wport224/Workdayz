@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { JobPosting, ResumeProfile, TailorResult } from "./types";
 import { computeAtsScore } from "./ats-score";
 
-import { COVER_LETTER_TONES, type CoverLetterTone } from "./tones";
+import { COVER_LETTER_LENGTHS, COVER_LETTER_TONES, type CoverLetterLength, type CoverLetterTone } from "./tones";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
@@ -10,6 +10,7 @@ const TOOL_NAME = "submit_tailored_application";
 
 export interface TailorOptions {
   tone?: CoverLetterTone;
+  length?: CoverLetterLength;
   extraInstructions?: string;
   /** Keywords a previous draft missed; the rewrite should work them in where truthful. */
   emphasisKeywords?: string[];
@@ -47,6 +48,7 @@ export async function tailorApplication(
   const client = new Anthropic({ apiKey });
 
   const tone = COVER_LETTER_TONES[options.tone ?? "professional"];
+  const length = COVER_LETTER_LENGTHS[options.length ?? "standard"];
 
   const system = `You help a job applicant tailor their existing resume and write a cover letter for a specific job posting.
 
@@ -55,7 +57,7 @@ Hard rules:
 - You MAY rephrase, reorder, emphasize, and select from the candidate's real experience to better match the job description, and you MAY surface skills/tools the candidate's bullets already demonstrate even if not in their skills list.
 - Do not fabricate metrics. Only include a number if it was already present in the source bullet, or is a faithful rephrasing of one that was.
 - Keep each experience entry's "id" exactly as given so it can be mapped back to the source entry.
-- Write the cover letter in the candidate's voice: specific to this company/role, 3-4 short paragraphs, no generic filler ("I am writing to express my interest..." is banned as an opener). Tone: ${tone}
+- Write the cover letter in the candidate's voice: specific to this company/role, no generic filler ("I am writing to express my interest..." is banned as an opener). Tone: ${tone} Length: ${length}
 - The cover letter must be body paragraphs only (a salutation like "Dear Hiring Team," is fine) — do NOT include a date line, address block, or closing signature such as "Sincerely" / the candidate's name. The letter template adds those automatically.
 - Extract 10-20 ATS keywords/skills/requirements from the job description, ordered by importance, using the same phrasing/casing a recruiter's ATS would search for (e.g. "React", "SQL", "stakeholder management").
 - Provide an honest fit analysis: 2-4 genuine strengths the candidate has for THIS specific role, 1-3 real gaps or risks, and a one-to-two sentence verdict. Do not sugarcoat the gaps — the candidate uses them to decide where to focus in interviews, so flattery here is a disservice.

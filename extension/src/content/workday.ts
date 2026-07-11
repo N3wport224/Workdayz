@@ -1,6 +1,7 @@
 import type { AutofillPackage, BaseProfile, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
+import { undoFill } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -86,6 +87,10 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
   const parts = [`Filled ${result.filled.length} field group(s)`];
   if (result.filesAttached.length) parts.push(`attached ${result.filesAttached.join(" & ")}`);
   if (result.skipped.length) parts.push(`couldn't find: ${result.skipped.join(", ")}`);
+  if (result.mismatches.length) parts.push(`CHECK — prefilled values differ from your profile: ${result.mismatches.join("; ")}`);
+  if (result.leftForYou.length) {
+    parts.push(`${result.leftForYou.length} personal/self-ID question(s) left for you to answer yourself`);
+  }
   const suffix = source.tailored
     ? "Review before continuing — nothing is submitted automatically."
     : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
@@ -122,7 +127,9 @@ function initApplicationFormWidget() {
     try {
       const questionFields = findQuestionFields();
       if (questionFields.length === 0) {
-        widget.setStatus("No unanswered question fields found on this step.");
+        widget.setStatus(
+          "No unanswered question fields found on this step (self-ID questions are always left to you).",
+        );
         return;
       }
       widget.setStatus(`Drafting answers to ${questionFields.length} question(s)... (10-30s)`);
@@ -149,6 +156,15 @@ function initApplicationFormWidget() {
     } finally {
       answersBtn.disabled = false;
     }
+  });
+
+  addButton(widget.root, "Undo last fill", () => {
+    const restored = undoFill();
+    widget.setStatus(
+      restored
+        ? `Restored ${restored} field(s) to their previous values. (Dropdown selections made via option clicks can't be undone automatically.)`
+        : "Nothing to undo — run an autofill first.",
+    );
   });
 
   addButton(widget.root, "Copy field report", async () => {
@@ -206,7 +222,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     if (!looksLikeApplicationForm()) return false;
     getFillSource().then(async (source) => {
       if (!source) {
-        sendResponse({ filled: [], skipped: [], filesAttached: [] });
+        sendResponse({ filled: [], skipped: [], filesAttached: [], leftForYou: [], mismatches: [] });
         return;
       }
       sendResponse(await runAutofill(source.pkg));

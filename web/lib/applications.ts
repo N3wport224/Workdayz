@@ -64,6 +64,31 @@ export function statusSince(app: SavedApplication): string {
   return history?.length ? history[history.length - 1].at : app.createdAt;
 }
 
+export function countTailoredSince(applications: SavedApplication[], days: number): number {
+  const cutoff = Date.now() - days * 86_400_000;
+  return applications.filter((a) => new Date(a.createdAt).getTime() >= cutoff).length;
+}
+
+export function isFollowUpOverdue(app: SavedApplication): boolean {
+  if (!app.followUpAt) return false;
+  if (app.status === "rejected" || app.status === "offer") return false;
+  return new Date(`${app.followUpAt}T23:59:59`) < new Date();
+}
+
+/** Merges imported applications into storage, skipping ids that already
+ * exist. Returns how many were added. */
+export function importApplications(incoming: unknown): number {
+  if (!Array.isArray(incoming)) throw new Error("Backup file must contain an array of applications.");
+  const existing = loadApplications();
+  const known = new Set(existing.map((a) => a.id));
+  const additions = incoming.filter(
+    (a): a is SavedApplication =>
+      Boolean(a) && typeof a.id === "string" && !known.has(a.id) && Boolean(a.job) && Boolean(a.atsScore),
+  );
+  persist([...additions, ...existing]);
+  return additions.length;
+}
+
 export function deleteApplication(id: string): void {
   persist(loadApplications().filter((a) => a.id !== id));
 }

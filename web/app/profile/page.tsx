@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ProfileForm } from "@/components/ProfileForm";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
 import { sendProfileToExtension } from "@/lib/extension-bridge";
+import { computeCompleteness } from "@/lib/profile-completeness";
 import { emptyProfile, loadProfile, mergeProfile, saveProfile } from "@/lib/storage";
 import type { ResumeProfile } from "@/lib/types";
 
@@ -20,6 +21,7 @@ export default function ProfilePage() {
   }, []);
 
   function persistProfile(next: ResumeProfile) {
+    setProfile(next); // keeps the completeness meter live without remounting the form
     saveProfile(next);
     sendProfileToExtension(next);
   }
@@ -56,6 +58,8 @@ export default function ProfilePage() {
 
   if (!loaded) return null;
 
+  const completeness = computeCompleteness(profile);
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <div className="mb-6">
@@ -89,6 +93,28 @@ export default function ProfilePage() {
           />
           {backupStatus ? <span className="opacity-70">{backupStatus}</span> : null}
         </div>
+      </div>
+      <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 mb-6">
+        <div className="flex items-baseline justify-between mb-2">
+          <p className="font-medium text-sm">Profile completeness</p>
+          <span className="text-lg font-bold">{completeness.score}%</span>
+        </div>
+        <div className="h-2 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden mb-2">
+          <div
+            className={`h-full ${completeness.score >= 80 ? "bg-emerald-500" : completeness.score >= 50 ? "bg-amber-500" : "bg-rose-500"}`}
+            style={{ width: `${completeness.score}%` }}
+          />
+        </div>
+        {completeness.suggestions.length ? (
+          <ul className="text-xs opacity-70 list-disc list-inside space-y-0.5">
+            {completeness.suggestions.slice(0, 4).map((s, i) => (
+              <li key={i}>{s}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs opacity-70">Everything the autofill and tailoring engines need is here.</p>
+        )}
+        <p className="text-xs opacity-40 mt-1">Updates when you save.</p>
       </div>
       <ResumeImportPanel onImported={replaceProfile} />
       <ProfileForm key={formKey} initial={profile} onSave={persistProfile} />

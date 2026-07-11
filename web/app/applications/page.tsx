@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
+  countTailoredSince,
   deleteApplication,
+  importApplications,
+  isFollowUpOverdue,
   loadApplications,
   statusSince,
   updateApplication,
   updateApplicationStatus,
 } from "@/lib/applications";
+import type { MessageKind } from "@/lib/generate-message";
 import { applicationsToCsv } from "@/lib/csv";
 import { fetchPdfAsBase64, onExtensionDetected, sendPackageToExtension } from "@/lib/extension-bridge";
 import { APPLICATION_STATUSES, type ApplicationStatus, type AutofillPackage, type SavedApplication } from "@/lib/types";
@@ -19,6 +23,11 @@ export default function ApplicationsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [extensionPresent, setExtensionPresent] = useState(false);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
+  const [sortBy, setSortBy] = useState<"newest" | "ats" | "company">("newest");
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const apps = loadApplications();
@@ -69,6 +78,43 @@ export default function ApplicationsPage() {
     applications.reduce((sum, a) => sum + a.atsScore.score, 0) / applications.length,
   );
 
+  const q = query.trim().toLowerCase();
+  const visible = applications
+    .filter((a) => statusFilter === "all" || a.status === statusFilter)
+    .filter(
+      (a) =>
+        !q ||
+        a.job.title.toLowerCase().includes(q) ||
+        a.job.company.toLowerCase().includes(q) ||
+        (a.notes ?? "").toLowerCase().includes(q),
+    )
+    .sort((a, b) => {
+      if (sortBy === "ats") return b.atsScore.score - a.atsScore.score;
+      if (sortBy === "company") return a.job.company.localeCompare(b.job.company);
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+  function exportBackup() {
+    const blob = new Blob([JSON.stringify(applications, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "workdayz-applications-backup.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setBackupStatus("Backup exported.");
+  }
+
+  async function restoreBackup(file: File) {
+    try {
+      const added = importApplications(JSON.parse(await file.text()));
+      refresh();
+      setBackupStatus(`Restored ${added} application(s) (existing entries untouched).`);
+    } catch (err) {
+      setBackupStatus(err instanceof Error ? err.message : "Couldn't read that backup.");
+    }
+  }
+
   return (
     <main className="mx-auto max-w-5xl px-4 py-10">
       <h1 className="text-2xl font-bold mb-4">Application tracker</h1>
@@ -85,24 +131,81 @@ export default function ApplicationsPage() {
         <span className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5">
           avg ATS <span className="font-semibold">{avgAts}</span>
         </span>
-        <button
-          onClick={() => {
-            const blob = new Blob([applicationsToCsv(applications)], { type: "text/csv" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "workdayz-applications.csv";
-            a.click();
-            URL.revokeObjectURL(url);
-          }}
-          className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5 text-blue-600 dark:text-blue-400 ml-auto"
+        <span className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5">
+          7d <span className="font-semibold">{countTailoredSince(applications, 7)}</span> · 30d{" "}
+          <span className="font-semibold">{countTailoredSince(applications, 30)}</span>
+        </span>
+        <span className="flex items-center gap-3 ml-auto">
+          <button
+            onClick={() => {
+              const blob = new Blob([applicationsToCsv(applications)], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "workdayz-applications.csv";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="text-blue-600 dark:text-blue-400"
+          >
+            CSV
+          </button>
+          <button onClick={exportBackup} className="text-blue-600 dark:text-blue-400">
+            Backup
+          </button>
+          <button onClick={() => backupInputRef.current?.click()} className="text-blue-600 dark:text-blue-400">
+            Restore
+          </button>
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) restoreBackup(file);
+              e.target.value = "";
+            }}
+          />
+        </span>
+      </div>
+      {backupStatus ? <p className="text-xs opacity-70 -mt-4 mb-4">{backupStatus}</p> : null}
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input
+          className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm flex-1 min-w-40"
+          placeholder="Search title, company, notes..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <select
+          className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1.5 text-sm"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as ApplicationStatus | "all")}
         >
-          Export CSV
-        </button>
+          <option value="all">All statuses</option>
+          {APPLICATION_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s[0].toUpperCase() + s.slice(1)}
+            </option>
+          ))}
+        </select>
+        <select
+          className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1.5 text-sm"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+        >
+          <option value="newest">Newest first</option>
+          <option value="ats">Highest ATS</option>
+          <option value="company">Company A-Z</option>
+        </select>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
         <ul className="space-y-2">
-          {applications.map((app) => (
+          {visible.length === 0 ? (
+            <li className="text-sm opacity-60 p-2">No applications match.</li>
+          ) : null}
+          {visible.map((app) => (
             <li key={app.id}>
               <button
                 onClick={() => setSelectedId(app.id)}
@@ -115,7 +218,17 @@ export default function ApplicationsPage() {
                 <p className="font-medium text-sm truncate">{app.job.title || "Untitled role"}</p>
                 <p className="text-xs opacity-70 truncate">{app.job.company}</p>
                 <div className="flex items-center justify-between mt-2">
-                  <StatusBadge status={app.status} />
+                  <span className="flex items-center gap-1.5">
+                    <StatusBadge status={app.status} />
+                    {isFollowUpOverdue(app) ? (
+                      <span
+                        title={`Follow-up was due ${app.followUpAt}`}
+                        className="text-xs text-amber-700 dark:text-amber-300 font-medium"
+                      >
+                        ⏰ follow up
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-xs opacity-60">ATS {app.atsScore.score}</span>
                 </div>
               </button>
@@ -155,6 +268,40 @@ function ApplicationDetail({
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [prepLoading, setPrepLoading] = useState(false);
   const [prepError, setPrepError] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<MessageKind | null>(null);
+  const [messageText, setMessageText] = useState("");
+  const [messageContext, setMessageContext] = useState("");
+  const [messageCopied, setMessageCopied] = useState(false);
+
+  async function draftMessage(kind: MessageKind) {
+    setMessageKind(kind);
+    setMessageText("");
+    setMessageCopied(false);
+    try {
+      const res = await fetch("/api/generate-message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind,
+          job: application.job,
+          summary: application.summary,
+          skills: application.skills,
+          experience: application.experience.map((e) => ({
+            title: e.title,
+            company: e.company,
+            bullets: e.bullets,
+          })),
+          context: messageContext,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Drafting failed.");
+      const { subject, body } = data.message as { subject: string; body: string };
+      setMessageText(subject ? `Subject: ${subject}\n\n${body}` : body);
+    } catch (err) {
+      setMessageText(err instanceof Error ? `Error: ${err.message}` : "Error: drafting failed.");
+    }
+  }
 
   async function generatePrep() {
     setPrepLoading(true);
@@ -279,17 +426,31 @@ function ApplicationDetail({
             {application.status} for {daysSince(statusSince(application))}
           </p>
         </div>
-        <select
-          className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
-          value={application.status}
-          onChange={(e) => onStatusChange(e.target.value as ApplicationStatus)}
-        >
-          {APPLICATION_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s[0].toUpperCase() + s.slice(1)}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col items-end gap-1.5">
+          <select
+            className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
+            value={application.status}
+            onChange={(e) => onStatusChange(e.target.value as ApplicationStatus)}
+          >
+            {APPLICATION_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s[0].toUpperCase() + s.slice(1)}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs opacity-70 flex items-center gap-1.5">
+            Follow up by
+            <input
+              type="date"
+              className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-1.5 py-0.5 text-xs"
+              value={application.followUpAt ?? ""}
+              onChange={(e) => {
+                updateApplication(application.id, { followUpAt: e.target.value || undefined });
+                onUpdated();
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 text-sm">
@@ -381,6 +542,52 @@ function ApplicationDetail({
       <div>
         <h3 className="font-semibold text-sm mb-1">Cover letter</h3>
         <p className="text-sm opacity-80 whitespace-pre-wrap">{application.coverLetterText}</p>
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-sm mb-2">Outreach messages</h3>
+        <div className="flex flex-wrap gap-2 mb-2">
+          <button
+            onClick={() => draftMessage("thank-you")}
+            className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium"
+          >
+            Thank-you email
+          </button>
+          <button
+            onClick={() => draftMessage("follow-up")}
+            className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium"
+          >
+            Follow-up email
+          </button>
+          <button
+            onClick={() => draftMessage("recruiter-dm")}
+            className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium"
+          >
+            Recruiter DM
+          </button>
+          <input
+            className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-xs flex-1 min-w-40"
+            placeholder="Optional context (interviewer's name, what you discussed...)"
+            value={messageContext}
+            onChange={(e) => setMessageContext(e.target.value)}
+          />
+        </div>
+        {messageKind && !messageText ? <p className="text-xs opacity-60">Drafting...</p> : null}
+        {messageText ? (
+          <div className="rounded-lg border border-black/10 dark:border-white/15 p-3">
+            <pre className="text-sm whitespace-pre-wrap font-sans opacity-90">{messageText}</pre>
+            <button
+              onClick={async () => {
+                await navigator.clipboard.writeText(messageText);
+                setMessageCopied(true);
+                setTimeout(() => setMessageCopied(false), 1500);
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 mt-2"
+            >
+              {messageCopied ? "Copied ✓" : "Copy message"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-3">
