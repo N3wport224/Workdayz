@@ -116,8 +116,12 @@ try {
   check("city", (await val("#city")) === "Austin");
   check("postal code", (await val("#postal")) === "78701");
 
-  const countryText = await page.$eval("#country-btn", (el) => el.textContent);
-  check("country listbox picked", countryText.includes("United States of America"), `got "${countryText}"`);
+  const countryCommitted = await page.$eval("#country-input", (el) => el.dataset.committed ?? "");
+  check(
+    "country search-combobox committed via option click",
+    countryCommitted === "United States of America",
+    `got "${countryCommitted}"`,
+  );
 
   const stateText = await page.$eval("#state-btn", (el) => el.textContent);
   check('state "TX" expands to "Texas" option', stateText === "Texas", `got "${stateText}"`);

@@ -3,8 +3,10 @@ import {
   attachFileToInput,
   fieldLabelText,
   fillListbox,
+  fillSearchCombobox,
   findAllFieldsBySynonyms,
   findCheckboxBySynonyms,
+  findComboboxBySynonyms,
   findFieldByAllTerms,
   findFieldBySynonyms,
   findFileInputBySynonyms,
@@ -146,9 +148,15 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
       continue;
     }
     // No text input matched — Workday renders country/state/phone-type as
-    // custom listbox buttons. Sequential awaits: only one popup at a time.
+    // custom listbox buttons or type-ahead search comboboxes. Sequential
+    // awaits: only one popup at a time.
     const listbox = findListboxButtonBySynonyms(document, synonyms);
     if (listbox && (await fillListbox(listbox, value))) {
+      summary.filled.push(key);
+      continue;
+    }
+    const combobox = findComboboxBySynonyms(document, synonyms);
+    if (combobox && (await fillSearchCombobox(combobox, value))) {
       summary.filled.push(key);
     } else {
       summary.skipped.push(key);
@@ -268,6 +276,23 @@ export function applyAnswers(
     filled++;
   }
   return filled;
+}
+
+/** Debug report for tuning field synonyms: every visible fillable field's
+ * label plus whether it currently holds a value. Contains NO user data —
+ * only the employer's form labels. */
+export function buildFieldReport(): string {
+  const lines = findFillableFields().map((el) => {
+    const kind = el.tagName.toLowerCase() + (el instanceof HTMLInputElement ? `[${el.type}]` : "");
+    const state = el.value?.trim() ? "filled" : "empty";
+    return `- (${kind}, ${state}) ${fieldLabelText(el).slice(0, 160)}`;
+  });
+  return [
+    `Workdayz field report`,
+    `page: ${location.hostname}${location.pathname}`,
+    `fields (${lines.length}):`,
+    ...lines,
+  ].join("\n");
 }
 
 export function looksLikeApplicationForm(): boolean {

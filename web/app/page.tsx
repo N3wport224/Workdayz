@@ -1,14 +1,17 @@
 import Link from "next/link";
+import { SetupChecklist } from "@/components/SetupChecklist";
 
 export default function Home() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-16">
       <h1 className="text-3xl font-bold mb-2">Workdayz</h1>
-      <p className="opacity-70 mb-10">
-        Tailor your resume and cover letter to a job posting from your company&apos;s internal
-        Workday, with an ATS match score — then hand off to the browser extension to autofill the
-        Workday application for a final review before you submit.
+      <p className="opacity-70 mb-6">
+        Tailor your resume and cover letter to any Workday job posting, with an ATS match score —
+        then hand off to the browser extension to autofill the application for a final review
+        before you submit.
       </p>
+
+      <SetupChecklist />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Link

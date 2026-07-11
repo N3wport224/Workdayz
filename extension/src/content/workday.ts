@@ -1,6 +1,6 @@
 import type { AutofillPackage, BaseProfile, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
-import { applyAnswers, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
+import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
 import { addButton, mountWidget } from "./widget";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -148,6 +148,17 @@ function initApplicationFormWidget() {
       widget.setStatus("The extension was updated — reload this page and try again.");
     } finally {
       answersBtn.disabled = false;
+    }
+  });
+
+  addButton(widget.root, "Copy field report", async () => {
+    try {
+      await navigator.clipboard.writeText(buildFieldReport());
+      widget.setStatus(
+        "Field report copied — paste it into an issue/chat to get unmatched fields supported. It contains only the form's labels, none of your data.",
+      );
+    } catch {
+      widget.setStatus("Couldn't access the clipboard — check the site's clipboard permission.");
     }
   });
 }

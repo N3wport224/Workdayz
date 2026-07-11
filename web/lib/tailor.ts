@@ -4,7 +4,7 @@ import { computeAtsScore } from "./ats-score";
 
 import { COVER_LETTER_TONES, type CoverLetterTone } from "./tones";
 
-const MODEL = "claude-sonnet-5";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
 const TOOL_NAME = "submit_tailored_application";
 

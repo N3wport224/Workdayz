@@ -88,13 +88,55 @@ function isEmpty(el: FillableElement): boolean {
   return !el.value?.trim();
 }
 
+function isSearchCombobox(el: Element): boolean {
+  return el.getAttribute("role") === "combobox" || Boolean(el.getAttribute("aria-autocomplete"));
+}
+
 export function findFillableFields(): FillableElement[] {
   const candidates = Array.from(
     document.querySelectorAll<FillableElement>("input:not([type=hidden]):not([type=file]), textarea, select"),
   );
   return candidates.filter(
-    (el) => isVisible(el) && !el.disabled && (el instanceof HTMLSelectElement || !(el as HTMLInputElement).readOnly),
+    (el) =>
+      isVisible(el) &&
+      !el.disabled &&
+      // Type-ahead comboboxes need their option clicked to commit a value —
+      // plain text-filling them leaves an uncommitted value Workday ignores.
+      // They're handled by fillSearchCombobox instead.
+      !isSearchCombobox(el) &&
+      (el instanceof HTMLSelectElement || !(el as HTMLInputElement).readOnly),
   );
+}
+
+/** Finds an empty type-ahead search combobox (input[role="combobox"] /
+ * aria-autocomplete) whose label matches one of the synonyms. */
+export function findComboboxBySynonyms(container: ParentNode, synonyms: string[]): HTMLInputElement | null {
+  const inputs = Array.from(
+    container.querySelectorAll<HTMLInputElement>(
+      'input[role="combobox"], input[aria-autocomplete]',
+    ),
+  );
+  for (const el of inputs) {
+    if (!isVisible(el) || el.disabled || el.readOnly || el.value.trim()) continue;
+    const label = labelForElement(el);
+    if (synonyms.some((s) => label.includes(normalize(s)))) return el;
+  }
+  return null;
+}
+
+/** Types into a search combobox, waits for the filtered options, and clicks
+ * the best match; clears the input again if nothing matches so Workday isn't
+ * left with an uncommitted value. */
+export async function fillSearchCombobox(input: HTMLInputElement, value: string): Promise<boolean> {
+  setFieldValue(input, value);
+  const option = await waitForOption(value, 2000);
+  if (!option) {
+    setFieldValue(input, "");
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    return false;
+  }
+  option.click();
+  return true;
 }
 
 /**

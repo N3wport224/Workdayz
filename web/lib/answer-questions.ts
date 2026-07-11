@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { JobPosting } from "./types";
 
-const MODEL = "claude-sonnet-5";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const TOOL_NAME = "submit_question_answers";
 
 export interface AnswerQuestionsInput {

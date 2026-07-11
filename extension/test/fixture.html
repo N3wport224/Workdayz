@@ -42,10 +42,12 @@
     <input id="postal" type="text" />
   </div>
 
+  <!-- Workday-style TYPE-AHEAD search combobox: options appear after typing
+       and must be clicked to commit the value. -->
   <div class="formField" data-automation-id="formField-countryDropdown">
-    <label id="country-label">Country</label>
-    <button id="country-btn" aria-haspopup="listbox" aria-labelledby="country-label">Select One</button>
-    <ul role="listbox" class="hidden">
+    <label id="country-label" for="country-input">Country</label>
+    <input id="country-input" role="combobox" aria-autocomplete="list" type="text" />
+    <ul id="country-options" role="listbox" class="hidden">
       <li role="option">Canada</li>
       <li role="option">United States of America</li>
       <li role="option">United Kingdom</li>
@@ -139,6 +141,28 @@
           btn.textContent = opt.textContent;
           list.classList.add("hidden");
         });
+      });
+    });
+
+    // Mimic Workday's search combobox: typing filters/reveals options; the
+    // committed value is set only when an option is clicked.
+    const countryInput = document.getElementById("country-input");
+    const countryOptions = document.getElementById("country-options");
+    countryInput.addEventListener("input", () => {
+      const q = countryInput.value.toLowerCase();
+      let any = false;
+      countryOptions.querySelectorAll('[role="option"]').forEach((opt) => {
+        const show = q && opt.textContent.toLowerCase().includes(q);
+        opt.style.display = show ? "" : "none";
+        if (show) any = true;
+      });
+      countryOptions.classList.toggle("hidden", !any);
+    });
+    countryOptions.querySelectorAll('[role="option"]').forEach((opt) => {
+      opt.addEventListener("click", () => {
+        countryInput.value = opt.textContent;
+        countryInput.dataset.committed = opt.textContent;
+        countryOptions.classList.add("hidden");
       });
     });
   </script>
