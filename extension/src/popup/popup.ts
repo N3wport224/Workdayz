@@ -81,7 +81,10 @@ autofillBtn.addEventListener("click", async () => {
     if (!result || (!result.filled.length && !result.filesAttached.length)) {
       autofillStatus.textContent = "Nothing filled — make sure you're on a Workday application page with a tailored package ready.";
     } else {
-      autofillStatus.textContent = `Filled ${result.filled.length} field(s)${result.filesAttached.length ? `, attached ${result.filesAttached.join(" & ")}` : ""}. Review before continuing.`;
+      const stillRequired = result.stillRequired?.length
+        ? ` ${result.stillRequired.length} required field(s) still need you.`
+        : "";
+      autofillStatus.textContent = `Filled ${result.filled.length} field(s)${result.filesAttached.length ? `, attached ${result.filesAttached.join(" & ")}` : ""}.${stillRequired} Review before continuing.`;
     }
   } catch {
     autofillStatus.textContent = "Couldn't reach this tab — open a Workday application page first.";

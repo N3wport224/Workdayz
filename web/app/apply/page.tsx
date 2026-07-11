@@ -322,8 +322,8 @@ export default function ApplyPage() {
       const [resumePdf, coverPdf] = await Promise.all([
         fetchPdfAsBase64("/api/resume-pdf", {
           contact: profile.contact,
-          summary: result.tailoredResume.summary,
-          skills: result.tailoredResume.skills,
+          summary: summaryText,
+          skills: parseSkills(skillsText),
           experience: merged,
           education: profile.education,
           certifications: profile.certifications,
@@ -344,8 +344,8 @@ export default function ApplyPage() {
         createdAt: new Date().toISOString(),
         job,
         contact: profile.contact,
-        summary: result.tailoredResume.summary,
-        skills: result.tailoredResume.skills,
+        summary: summaryText,
+        skills: parseSkills(skillsText),
         experience: merged,
         education: profile.education,
         certifications: profile.certifications,
