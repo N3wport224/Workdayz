@@ -89,6 +89,25 @@ export function importApplications(incoming: unknown): number {
   return additions.length;
 }
 
+export function setArchived(id: string, archived: boolean): void {
+  updateApplication(id, { archived });
+}
+
+/** Archives every non-archived rejected application. Returns the count. */
+export function bulkArchiveRejected(): number {
+  const applications = loadApplications();
+  let count = 0;
+  for (const app of applications) {
+    if (app.status === "rejected" && !app.archived) {
+      app.archived = true;
+      app.updatedAt = new Date().toISOString();
+      count += 1;
+    }
+  }
+  if (count > 0) persist(applications);
+  return count;
+}
+
 export function deleteApplication(id: string): void {
   persist(loadApplications().filter((a) => a.id !== id));
 }

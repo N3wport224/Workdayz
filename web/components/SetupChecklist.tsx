@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { onExtensionDetected } from "@/lib/extension-bridge";
-import { hasProfile, loadProfile } from "@/lib/storage";
+import { demoProfile } from "@/lib/demo-data";
+import { onExtensionDetected, sendProfileToExtension } from "@/lib/extension-bridge";
+import { hasProfile, loadProfile, saveProfile } from "@/lib/storage";
 
 type CheckState = "pending" | "ok" | "missing";
 
@@ -78,7 +79,20 @@ export function SetupChecklist() {
           label="Resume profile saved"
           hint={
             <>
-              upload your resume on the <Link href="/profile" className="text-blue-600 dark:text-blue-400">Resume page</Link>
+              upload your resume on the{" "}
+              <Link href="/profile" className="text-blue-600 dark:text-blue-400">Resume page</Link>, or{" "}
+              <button
+                type="button"
+                className="text-blue-600 dark:text-blue-400 underline"
+                onClick={() => {
+                  saveProfile(demoProfile);
+                  sendProfileToExtension(demoProfile);
+                  setProfile("ok");
+                }}
+              >
+                load a demo profile
+              </button>{" "}
+              to try the tool first
             </>
           }
         />

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateMessage, MESSAGE_KINDS, type GenerateMessageInput, type MessageKind } from "@/lib/generate-message";
 import { shapeExperienceItems, str, strArr } from "@/lib/request-shape";
+import { describeAnthropicError } from "@/lib/api-error";
 
 export async function POST(request: Request) {
   let body: Partial<GenerateMessageInput>;
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ message });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Message drafting failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status } = describeAnthropicError(err, "Message drafting failed.");
+    return NextResponse.json({ error: message }, { status });
   }
 }

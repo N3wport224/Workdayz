@@ -70,6 +70,16 @@ export interface BaseProfile {
   experience: ExperienceEntry[];
   education: EducationEntry[];
   certifications: string[];
+  /** Set by the background worker when the web app syncs the profile. */
+  syncedAt?: string;
+}
+
+/** A user-defined answer: any field whose label contains `label`
+ * (case-insensitive) gets filled with `value`. Lets users teach the
+ * autofill about tenant-specific fields without a code change. */
+export interface CustomFillRule {
+  label: string;
+  value: string;
 }
 
 // chrome.storage.local keys
@@ -78,6 +88,9 @@ export const STORAGE_KEYS = {
   scrapedJob: "workdayz.scrapedJob",
   autofillPackage: "workdayz.autofillPackage",
   baseProfile: "workdayz.baseProfile",
+  customRules: "workdayz.customRules",
+  hearAboutUs: "workdayz.hearAboutUs",
+  widgetPosition: "workdayz.widgetPosition",
 } as const;
 
 // window.postMessage protocol with the web app (see web/lib/extension-bridge.ts)
@@ -102,7 +115,8 @@ export type RuntimeMessage =
   | { type: "RUN_AUTOFILL" }
   | { type: "ANSWER_QUESTIONS"; questions: string[] }
   | { type: "STORE_PROFILE"; payload: BaseProfile }
-  | { type: "GET_PROFILE" };
+  | { type: "GET_PROFILE" }
+  | { type: "SET_BADGE"; count: number };
 
 export interface QuestionAnswer {
   question: string;
@@ -117,4 +131,6 @@ export interface AutofillRunSummary {
   leftForYou: string[];
   /** Prefilled form values that differ from the profile (e.g. an old phone). */
   mismatches: string[];
+  /** Required fields on this step that are still empty after the run. */
+  stillRequired: string[];
 }

@@ -3,6 +3,7 @@
 // collapsed state persists via chrome.storage.local.
 
 const COLLAPSED_KEY = "workdayz.widgetCollapsed";
+const POSITION_KEY = "workdayz.widgetPosition"; // "right" (default) | "left"
 
 export interface Widget {
   root: HTMLElement;
@@ -18,6 +19,14 @@ export function mountWidget(title: string): Widget {
   host.style.right = "20px";
   host.style.zIndex = "2147483647";
   document.body.appendChild(host);
+
+  // Some Workday tenants put their own chat/help bubble bottom-right; let
+  // the user park the widget on the other side instead.
+  function applyPosition(side: "left" | "right") {
+    host.style.left = side === "left" ? "20px" : "";
+    host.style.right = side === "right" ? "20px" : "";
+  }
+  let position: "left" | "right" = "right";
 
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = `
@@ -69,7 +78,10 @@ export function mountWidget(title: string): Widget {
     <div class="panel" id="panel">
       <div class="titleRow">
         <div class="title" id="title"></div>
-        <button class="collapseBtn" id="collapse" title="Minimize">—</button>
+        <div>
+          <button class="collapseBtn" id="move" title="Move to the other side">⇄</button>
+          <button class="collapseBtn" id="collapse" title="Minimize">—</button>
+        </div>
       </div>
       <div class="status" id="status">Loading...</div>
       <div id="actions"></div>
@@ -98,10 +110,23 @@ export function mountWidget(title: string): Widget {
 
   shadow.getElementById("collapse")!.addEventListener("click", () => setCollapsed(true, true));
   bubble.addEventListener("click", () => setCollapsed(false, true));
+  shadow.getElementById("move")!.addEventListener("click", () => {
+    position = position === "right" ? "left" : "right";
+    applyPosition(position);
+    try {
+      chrome.storage.local.set({ [POSITION_KEY]: position });
+    } catch {
+      /* orphaned script */
+    }
+  });
 
   try {
-    chrome.storage.local.get(COLLAPSED_KEY).then((data) => {
+    chrome.storage.local.get([COLLAPSED_KEY, POSITION_KEY]).then((data) => {
       if (data[COLLAPSED_KEY]) setCollapsed(true, false);
+      if (data[POSITION_KEY] === "left") {
+        position = "left";
+        applyPosition("left");
+      }
     });
   } catch {
     /* orphaned script */

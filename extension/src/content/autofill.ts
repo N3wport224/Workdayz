@@ -1,4 +1,4 @@
-import type { AutofillPackage, AutofillRunSummary, EducationEntry, ExperienceEntry } from "../types";
+import type { AutofillPackage, AutofillRunSummary, CustomFillRule, EducationEntry, ExperienceEntry } from "../types";
 import {
   attachFileToInput,
   fieldLabelText,
@@ -147,13 +147,17 @@ function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
  * Another" — the user advances the wizard themselves and re-runs this once
  * per step, which doubles as their review checkpoint.
  */
-export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSummary> {
+export async function runAutofill(
+  pkg: AutofillPackage,
+  customRules: CustomFillRule[] = [],
+): Promise<AutofillRunSummary> {
   const summary: AutofillRunSummary = {
     filled: [],
     skipped: [],
     filesAttached: [],
     leftForYou: [],
     mismatches: [],
+    stillRequired: [],
   };
   startFillLog();
   const fields = findFillableFields();
@@ -195,6 +199,28 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
       summary.filled.push(key);
     } else {
       summary.skipped.push(key);
+    }
+  }
+
+  // User-defined answers ("Desired salary = 85000", the how-did-you-hear
+  // default, ...). Self-ID questions stay off-limits even via custom rules.
+  for (const rule of customRules) {
+    const label = rule.label.trim();
+    if (!label || !rule.value || isPersonalField(label)) continue;
+    const field = findFieldBySynonyms(fields, [label.toLowerCase()]);
+    if (field) {
+      setFieldValue(field, rule.value);
+      summary.filled.push(`custom: ${label.slice(0, 40)}`);
+      continue;
+    }
+    const listbox = findListboxButtonBySynonyms(document, [label.toLowerCase()]);
+    if (listbox && (await fillListbox(listbox, rule.value))) {
+      summary.filled.push(`custom: ${label.slice(0, 40)}`);
+      continue;
+    }
+    const combobox = findComboboxBySynonyms(document, [label.toLowerCase()]);
+    if (combobox && (await fillSearchCombobox(combobox, rule.value))) {
+      summary.filled.push(`custom: ${label.slice(0, 40)}`);
     }
   }
 
@@ -271,7 +297,24 @@ export async function runAutofill(pkg: AutofillPackage): Promise<AutofillRunSumm
     );
   }
 
+  summary.stillRequired = findEmptyRequiredFields();
   return summary;
+}
+
+/** Labels of required fields on this step that are still empty — the
+ * checklist of what the user must handle before advancing the wizard. */
+export function findEmptyRequiredFields(): string[] {
+  const labels: string[] = [];
+  for (const el of findFillableFields()) {
+    if (el.value?.trim()) continue;
+    const required =
+      ("required" in el && (el as HTMLInputElement).required) ||
+      el.getAttribute("aria-required") === "true";
+    if (!required) continue;
+    const label = fieldLabelText(el).trim();
+    if (label) labels.push(label.slice(0, 60));
+  }
+  return labels.slice(0, 12);
 }
 
 export interface QuestionField {

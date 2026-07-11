@@ -1,5 +1,5 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import type { ContactInfo, EducationEntry, WorkExperience } from "@/lib/types";
+import type { ContactInfo, EducationEntry, ProjectEntry, WorkExperience } from "@/lib/types";
 
 // ATS-safe layout: single column, standard built-in font, plain text only —
 // no tables, images, text boxes, or multi-column sections that resume
@@ -37,6 +37,7 @@ export interface ResumePdfProps {
   experience: (WorkExperience & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
+  projects?: ProjectEntry[];
 }
 
 export function ResumeDocument({
@@ -46,6 +47,7 @@ export function ResumeDocument({
   experience,
   education,
   certifications,
+  projects,
 }: ResumePdfProps) {
   const contactParts = [
     contact.email,
@@ -116,6 +118,20 @@ export function ResumeDocument({
                 </Text>
               </View>
             ))}
+          </View>
+        ) : null}
+
+        {projects?.filter((p) => p.name.trim()).length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Projects</Text>
+            {projects
+              .filter((p) => p.name.trim())
+              .map((p) => (
+                <View key={p.id} style={styles.entryBlock} wrap={false}>
+                  <Text style={styles.entryHeader}>{p.name}</Text>
+                  <Text style={styles.paragraph}>{p.description}</Text>
+                </View>
+              ))}
           </View>
         ) : null}
 

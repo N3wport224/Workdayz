@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { answerQuestions, type AnswerQuestionsInput } from "@/lib/answer-questions";
 import { shapeExperienceItems, strArr } from "@/lib/request-shape";
+import { describeAnthropicError } from "@/lib/api-error";
 
 // Called cross-origin by the browser extension's background service worker
 // (which has explicit host permission for this origin), as well as by the
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ answers });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Answer drafting failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status } = describeAnthropicError(err, "Answer drafting failed.");
+    return NextResponse.json({ error: message }, { status });
   }
 }

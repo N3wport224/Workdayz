@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { JobPosting, ResumeProfile } from "@/lib/types";
 import { tailorApplication, type TailorOptions } from "@/lib/tailor";
 import { shapeProfile, strArr } from "@/lib/request-shape";
+import { describeAnthropicError } from "@/lib/api-error";
 import { COVER_LETTER_LENGTHS, COVER_LETTER_TONES } from "@/lib/tones";
 
 export async function POST(request: Request) {
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
     const result = await tailorApplication(shapeProfile(profile), job, options);
     return NextResponse.json(result);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Tailoring failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status } = describeAnthropicError(err, "Tailoring failed.");
+    return NextResponse.json({ error: message }, { status });
   }
 }

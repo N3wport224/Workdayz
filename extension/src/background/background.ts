@@ -28,8 +28,8 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
-  handleMessage(message).then(sendResponse);
+chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
+  handleMessage(message, sender).then(sendResponse);
   return true; // keep the message channel open for the async response
 });
 
@@ -47,7 +47,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-async function handleMessage(message: RuntimeMessage) {
+async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.MessageSender) {
   switch (message.type) {
     case "STORE_SCRAPED_JOB": {
       await chrome.storage.local.set({ [STORAGE_KEYS.scrapedJob]: message.payload });
@@ -66,7 +66,18 @@ async function handleMessage(message: RuntimeMessage) {
       return { pkg: (data[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined) ?? null };
     }
     case "STORE_PROFILE": {
-      await chrome.storage.local.set({ [STORAGE_KEYS.baseProfile]: message.payload });
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.baseProfile]: { ...message.payload, syncedAt: new Date().toISOString() },
+      });
+      return { ok: true };
+    }
+    case "SET_BADGE": {
+      // Per-tab fill-count badge; clears itself when the tab navigates.
+      const tabId = sender.tab?.id;
+      if (typeof tabId === "number") {
+        await chrome.action.setBadgeBackgroundColor({ color: "#059669", tabId });
+        await chrome.action.setBadgeText({ text: message.count > 0 ? String(message.count) : "", tabId });
+      }
       return { ok: true };
     }
     case "GET_PROFILE": {

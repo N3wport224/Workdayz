@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { importResume } from "@/lib/import-resume";
+import { describeAnthropicError } from "@/lib/api-error";
 
 // ~10 MB of PDF, base64-encoded (4/3 expansion).
 const MAX_PDF_BASE64_CHARS = 14_000_000;
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     const profile = await importResume(pdfBase64 ? { pdfBase64 } : { text });
     return NextResponse.json({ profile });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Resume import failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status } = describeAnthropicError(err, "Resume import failed.");
+    return NextResponse.json({ error: message }, { status });
   }
 }

@@ -100,7 +100,15 @@ try {
     atsScore: 90,
   };
 
-  const summary = await page.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), pkg);
+  const customRules = [
+    { label: "Desired salary", value: "85000" },
+    { label: "how did you hear", value: "LinkedIn" },
+    { label: "veteran", value: "should never fill" }, // self-ID stays off-limits
+  ];
+  const summary = await page.evaluate(
+    async ({ p, rules }) => window.WorkdayzTest.runAutofill(p, rules),
+    { p: pkg, rules: customRules },
+  );
   console.log("autofill summary:", JSON.stringify(summary));
 
   const val = (sel) => page.$eval(sel, (el) => el.value);
@@ -198,6 +206,25 @@ try {
     "prefilled email mismatch flagged",
     summary.mismatches.some((m) => m.startsWith("email")),
     JSON.stringify(summary.mismatches),
+  );
+
+  check("custom rule fills text field", (await val("#salary")) === "85000");
+  const hearText = await page.$eval("#hear-btn", (el) => el.textContent);
+  check("custom rule fills listbox (hear-about-us default)", hearText === "LinkedIn", `got "${hearText}"`);
+  check(
+    "custom rule NEVER fills self-ID fields",
+    (await val("#veteran")) === "",
+    `veteran="${await val("#veteran")}"`,
+  );
+  check(
+    "still-required report lists the empty required field",
+    summary.stillRequired.some((l) => l.includes("Employee ID")),
+    JSON.stringify(summary.stillRequired),
+  );
+  check(
+    "still-required report omits filled fields",
+    !summary.stillRequired.some((l) => l.toLowerCase().includes("salary")),
+    JSON.stringify(summary.stillRequired),
   );
 
   // Profile-only fill source (no tailored package): contact fills, but no

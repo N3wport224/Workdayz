@@ -1,9 +1,14 @@
 # Workdayz
 
-Tailors your resume and cover letter to a specific job posting from your
-company's internal Workday, scores the result for ATS keyword match, and
-autofills the Workday application in your browser — stopping before the
-final Submit so you always review before it goes out.
+Tailors your resume and cover letter to a specific job posting on a public
+Workday career site (`*.myworkdayjobs.com`), scores the result for ATS
+keyword match, and autofills the Workday application in your browser —
+stopping before the final Submit so you always review before it goes out.
+
+The extension deliberately only runs on public career sites, never on a
+company's internal Workday (`*.myworkday.com`) — applying externally with
+your own tools is your business; automating your employer's internal systems
+may violate policy.
 
 ## Architecture
 
@@ -99,7 +104,34 @@ track its status over time.
   every filled field, self-identification questions (veteran/disability/
   gender/race) always left to you and reported, prefilled-value mismatch
   warnings (e.g. the form has an old phone number), keyboard shortcut
-  (Alt+Shift+F), collapsible on-page widget.
+  (Alt+Shift+F), collapsible/movable on-page widget, toolbar badge showing
+  the fill count, and a required-fields-still-empty checklist after every
+  run.
+- **Custom answers** — teach the autofill tenant-specific fields from the
+  extension popup ("Desired salary = 85000", one rule per line) plus a
+  dedicated "How did you hear about us?" default; self-ID fields stay
+  off-limits even via custom rules.
+- **Multiple profiles** — keep separate resume profiles (e.g. analyst vs.
+  ops roles) and switch between them; plus a demo profile to try the tool
+  before importing your real resume, and a one-click "delete all my data"
+  wipe.
+- **Projects section** — first-class projects on the profile, in tailoring
+  input, and on the rendered resume PDF.
+- **Fetch posting by URL** — paste a job posting URL and the app extracts
+  title/company/location/description server-side (JSON-LD aware, SSRF-guarded)
+  so you don't have to copy/paste.
+- **Editable output** — tweak the tailored summary and skills inline before
+  exporting; cover-letter draft history with one-click restore of any
+  previous draft.
+- **Cost transparency** — every AI run reports its estimated API cost plus
+  a lifetime total for this browser; rate-limit/overload/credit errors come
+  back as actionable messages instead of generic failures.
+- **Tracker board view** — kanban-style status columns alongside the list
+  view, per-application status timeline, "open original posting" links,
+  archive (single or bulk-archive rejected), and an overdue follow-up nudge
+  on the home page.
+- **Interview prep export** — download any application's prep as Markdown
+  for your notes app.
 
 ## Safety notes
 

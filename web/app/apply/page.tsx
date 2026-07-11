@@ -20,7 +20,9 @@ import {
   type CoverLetterLength,
   type CoverLetterTone,
 } from "@/lib/tones";
-import type { AutofillPackage, JobPosting, ResumeProfile, TailorResult } from "@/lib/types";
+import type { AutofillPackage, JobPosting, ResumeProfile, TailorResult, UsageInfo } from "@/lib/types";
+import { formatUsd } from "@/lib/pricing";
+import { recordUsage } from "@/lib/usage-log";
 
 const inputClass =
   "w-full rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -65,6 +67,13 @@ export default function ApplyPage() {
   const [extraInstructions, setExtraInstructions] = useState("");
   const [dupeNote, setDupeNote] = useState<string | null>(null);
   const [letterLoading, setLetterLoading] = useState(false);
+  // Editable copies of the tailored summary/skills — the user can tweak the
+  // model's output before exporting, and every export path reads these.
+  const [summaryText, setSummaryText] = useState("");
+  const [skillsText, setSkillsText] = useState("");
+  const [letterDrafts, setLetterDrafts] = useState<string[]>([]);
+  const [costNote, setCostNote] = useState<string | null>(null);
+  const [fetchingUrl, setFetchingUrl] = useState(false);
   const applicationIdRef = useRef<string>(crypto.randomUUID());
   const lastJobKeyRef = useRef<string>("");
   const draftLoadedRef = useRef(false);
@@ -156,7 +165,11 @@ export default function ApplyPage() {
       const tailored = data as TailorResult;
       setResult(tailored);
       setCoverLetter(tailored.coverLetter);
-      persistSnapshot(tailored, tailored.coverLetter);
+      setSummaryText(tailored.tailoredResume.summary);
+      setSkillsText(tailored.tailoredResume.skills.join(", "));
+      setLetterDrafts([]);
+      noteCost(tailored.usage);
+      persistSnapshot(tailored, tailored.coverLetter, tailored.tailoredResume.summary, tailored.tailoredResume.skills);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -188,6 +201,8 @@ export default function ApplyPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Cover letter regeneration failed.");
       const fresh = (data as TailorResult).coverLetter;
+      noteCost((data as TailorResult).usage);
+      setLetterDrafts((prev) => [coverLetter, ...prev].slice(0, 5));
       setCoverLetter(fresh);
       persistSnapshot(result, fresh);
     } catch (err) {
@@ -197,10 +212,54 @@ export default function ApplyPage() {
     }
   }
 
+  /** Records the run's estimated AI cost + the lifetime total. */
+  function noteCost(usage?: UsageInfo) {
+    if (!usage) return;
+    const { runCostUsd, log } = recordUsage(usage);
+    if (runCostUsd === null) return;
+    setCostNote(
+      `Est. AI cost: ${formatUsd(runCostUsd)} this run · ${formatUsd(log.totalCostUsd)} across ${log.runs} run${log.runs === 1 ? "" : "s"} in this browser`,
+    );
+  }
+
+  /** Fills the job form from a pasted posting URL via /api/fetch-job. */
+  async function fetchFromUrl() {
+    const url = job.sourceUrl?.trim();
+    if (!url) return;
+    setFetchingUrl(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/fetch-job", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Couldn't fetch that URL.");
+      const fetched = data.job as JobPosting;
+      setJob((j) => ({
+        ...j,
+        title: fetched.title || j.title,
+        company: fetched.company || j.company,
+        location: fetched.location || j.location,
+        description: fetched.description || j.description,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't fetch that URL.");
+    } finally {
+      setFetchingUrl(false);
+    }
+  }
+
   /** Saves/updates this application's tracker entry, preserving its original
    * createdAt. Called after tailoring AND whenever the user exports or hands
    * off, so edits made to the cover letter after tailoring aren't lost. */
-  function persistSnapshot(tailored: TailorResult, coverLetterText: string) {
+  function persistSnapshot(
+    tailored: TailorResult,
+    coverLetterText: string,
+    summaryArg?: string,
+    skillsArg?: string[],
+  ) {
     if (!profile) return;
     const now = new Date().toISOString();
     upsertApplication({
@@ -210,11 +269,12 @@ export default function ApplyPage() {
       updatedAt: now,
       job,
       contact: profile.contact,
-      summary: tailored.tailoredResume.summary,
-      skills: tailored.tailoredResume.skills,
+      summary: summaryArg ?? summaryText,
+      skills: skillsArg ?? parseSkills(skillsText),
       experience: mergedExperience(profile, tailored),
       education: profile.education,
       certifications: profile.certifications,
+      projects: profile.projects,
       coverLetterText,
       atsScore: tailored.atsScore,
       fitAnalysis: tailored.fitAnalysis,
@@ -229,11 +289,13 @@ export default function ApplyPage() {
     const merged = mergedExperience(profile, result);
     const { base64, fileName } = await fetchPdfAsBase64("/api/resume-pdf", {
       contact: profile.contact,
-      summary: result.tailoredResume.summary,
-      skills: result.tailoredResume.skills,
+      summary: summaryText,
+      skills: parseSkills(skillsText),
       experience: merged,
       education: profile.education,
       certifications: profile.certifications,
+      projects: profile.projects,
+      companyName: job.company,
     });
     triggerDownload(base64, fileName);
   }
@@ -265,6 +327,8 @@ export default function ApplyPage() {
           experience: merged,
           education: profile.education,
           certifications: profile.certifications,
+          projects: profile.projects,
+          companyName: job.company,
         }),
         fetchPdfAsBase64("/api/cover-letter-pdf", {
           contact: profile.contact,
@@ -362,11 +426,23 @@ export default function ApplyPage() {
           </div>
           <div>
             <label className={labelClass}>Source URL (optional)</label>
-            <input
-              className={inputClass}
-              value={job.sourceUrl}
-              onChange={(e) => setJob((j) => ({ ...j, sourceUrl: e.target.value }))}
-            />
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                value={job.sourceUrl}
+                onChange={(e) => setJob((j) => ({ ...j, sourceUrl: e.target.value }))}
+                placeholder="https://company.wd5.myworkdayjobs.com/..."
+              />
+              <button
+                type="button"
+                onClick={fetchFromUrl}
+                disabled={fetchingUrl || !job.sourceUrl?.trim()}
+                className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm font-medium shrink-0 disabled:opacity-40"
+                title="Fetch the posting and fill the fields below"
+              >
+                {fetchingUrl ? "Fetching…" : "Fetch"}
+              </button>
+            </div>
           </div>
         </div>
         <div>
@@ -491,8 +567,8 @@ export default function ApplyPage() {
               <h2 className="text-lg font-semibold">Tailored resume preview</h2>
               <span className="text-xs opacity-60">
                 est. {estimateResumePages({
-                  summary: result.tailoredResume.summary,
-                  skills: result.tailoredResume.skills,
+                  summary: summaryText,
+                  skills: parseSkills(skillsText),
                   experience: mergedExperience(profile!, result),
                   education: profile?.education ?? [],
                   certifications: profile?.certifications ?? [],
@@ -501,14 +577,26 @@ export default function ApplyPage() {
               </span>
             </div>
             <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 text-sm space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <p className="opacity-80">{result.tailoredResume.summary}</p>
-                <CopyButton text={result.tailoredResume.summary} />
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className={labelClass}>Summary (editable)</label>
+                  <CopyButton text={summaryText} />
+                </div>
+                <textarea
+                  className={inputClass}
+                  rows={3}
+                  value={summaryText}
+                  onChange={(e) => setSummaryText(e.target.value)}
+                />
               </div>
-              <p>
-                <span className="font-medium">Skills: </span>
-                {result.tailoredResume.skills.join(", ")}
-              </p>
+              <div>
+                <label className={labelClass}>Skills (editable, comma-separated)</label>
+                <input
+                  className={inputClass}
+                  value={skillsText}
+                  onChange={(e) => setSkillsText(e.target.value)}
+                />
+              </div>
               {result.tailoredResume.experience.map((exp) => {
                 const source = profile?.experience.find((e) => e.id === exp.id);
                 return (
@@ -559,6 +647,32 @@ export default function ApplyPage() {
               value={coverLetter}
               onChange={(e) => setCoverLetter(e.target.value)}
             />
+            {letterDrafts.length > 0 ? (
+              <details className="mt-2">
+                <summary className="text-xs opacity-60 cursor-pointer">
+                  Previous draft{letterDrafts.length === 1 ? "" : "s"} ({letterDrafts.length})
+                </summary>
+                <div className="space-y-2 mt-2">
+                  {letterDrafts.map((draft, i) => (
+                    <div key={i} className="rounded-md border border-black/10 dark:border-white/15 p-2">
+                      <p className="text-xs opacity-70 whitespace-pre-wrap max-h-32 overflow-y-auto">{draft}</p>
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 dark:text-blue-400 mt-1"
+                        onClick={() => {
+                          // Swap: the current letter joins the history so
+                          // nothing is ever lost by restoring.
+                          setLetterDrafts((prev) => [coverLetter, ...prev.filter((_, idx) => idx !== i)].slice(0, 5));
+                          setCoverLetter(draft);
+                        }}
+                      >
+                        Restore this draft
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
           </section>
 
           <div className="flex flex-wrap gap-3">
@@ -582,6 +696,7 @@ export default function ApplyPage() {
             </button>
           </div>
           {handoffStatus ? <p className="text-sm opacity-80">{handoffStatus}</p> : null}
+          {costNote ? <p className="text-xs opacity-50">{costNote}</p> : null}
           {saved ? (
             <p className="text-xs opacity-60">
               Saved to your{" "}
@@ -626,6 +741,13 @@ function ResultSkeleton() {
       <div className="h-32 rounded-lg bg-black/5 dark:bg-white/10" />
     </div>
   );
+}
+
+function parseSkills(text: string): string[] {
+  return text
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function mergedExperience(profile: ResumeProfile, result: TailorResult) {

@@ -30,7 +30,12 @@ function buildProfileBlock(profile: ResumeProfile): string {
     )
     .join("\n");
 
-  return `SUMMARY:\n${profile.summary}\n\nSKILLS:\n${profile.skills.join(", ")}\n\nEXPERIENCE:\n${experience}\n\nEDUCATION:\n${education}\n\nCERTIFICATIONS:\n${profile.certifications.join(", ")}`;
+  const projects = (profile.projects ?? [])
+    .filter((p) => p.name.trim())
+    .map((p) => `- ${p.name}: ${p.description}`)
+    .join("\n");
+
+  return `SUMMARY:\n${profile.summary}\n\nSKILLS:\n${profile.skills.join(", ")}\n\nEXPERIENCE:\n${experience}\n\nEDUCATION:\n${education}\n\nCERTIFICATIONS:\n${profile.certifications.join(", ")}${projects ? `\n\nPROJECTS:\n${projects}` : ""}`;
 }
 
 export async function tailorApplication(
@@ -179,5 +184,17 @@ Hard rules:
     gaps: strArr(rawFit.gaps),
   };
 
-  return { tailoredResume, coverLetter: str(input.coverLetter), atsScore, fitAnalysis };
+  return {
+    tailoredResume,
+    coverLetter: str(input.coverLetter),
+    atsScore,
+    fitAnalysis,
+    usage: {
+      model: MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
+    },
+  };
 }

@@ -36,6 +36,12 @@ export interface EducationEntry {
   gpa?: string;
 }
 
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface ResumeProfile {
   contact: ContactInfo;
   summary: string;
@@ -43,6 +49,7 @@ export interface ResumeProfile {
   experience: WorkExperience[];
   education: EducationEntry[];
   certifications: string[];
+  projects?: ProjectEntry[];
 }
 
 export interface JobPosting {
@@ -78,11 +85,22 @@ export interface FitAnalysis {
   gaps: string[];
 }
 
+/** Token usage reported by the API for one model call. Shape matches
+ * lib/pricing.ts UsageTotals so the client can estimate cost. */
+export interface UsageInfo {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
+}
+
 export interface TailorResult {
   tailoredResume: TailoredResume;
   coverLetter: string;
   atsScore: AtsScoreBreakdown;
   fitAnalysis: FitAnalysis;
+  usage?: UsageInfo;
 }
 
 export interface InterviewQuestion {
@@ -122,6 +140,7 @@ export interface SavedApplication {
   experience: (WorkExperience & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
+  projects?: ProjectEntry[];
   coverLetterText: string;
   atsScore: AtsScoreBreakdown;
   fitAnalysis?: FitAnalysis;
@@ -130,6 +149,9 @@ export interface SavedApplication {
   statusHistory?: { status: ApplicationStatus; at: string }[];
   /** ISO date (yyyy-mm-dd) to follow up by; overdue entries get flagged. */
   followUpAt?: string;
+  /** Archived entries are hidden from the default tracker views but kept
+   * for the record (and still appear in CSV/backup exports). */
+  archived?: boolean;
 }
 
 // The package handed off to the browser extension for autofilling Workday.

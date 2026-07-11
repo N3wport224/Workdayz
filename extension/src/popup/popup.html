@@ -29,7 +29,8 @@
         opacity: 0.7;
         margin-bottom: 4px;
       }
-      input {
+      input,
+      textarea {
         width: 100%;
         box-sizing: border-box;
         padding: 6px 8px;
@@ -53,7 +54,13 @@
         background: #e5e7eb;
         color: #111827;
       }
+      textarea {
+        font-family: inherit;
+        resize: vertical;
+      }
       #status,
+      #profileStatus,
+      #rulesStatus,
       #autofillStatus {
         font-size: 12px;
         opacity: 0.85;
@@ -75,6 +82,16 @@
     <section>
       <button id="openAppBtn" class="secondary">Open Workdayz web app</button>
       <div id="status">Loading current application...</div>
+      <div id="profileStatus"></div>
+    </section>
+
+    <section>
+      <label for="hearAboutUs">&ldquo;How did you hear about us?&rdquo; default</label>
+      <input id="hearAboutUs" type="text" placeholder="e.g. LinkedIn" />
+      <label for="customRules">Custom answers (one per line: field label = value)</label>
+      <textarea id="customRules" rows="3" placeholder="Desired salary = 85000&#10;Notice period = 2 weeks"></textarea>
+      <button id="saveRulesBtn" class="secondary">Save answers</button>
+      <div id="rulesStatus"></div>
     </section>
 
     <section>

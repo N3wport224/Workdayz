@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateInterviewPrep, type InterviewPrepInput } from "@/lib/interview-prep";
 import { shapeExperienceItems, strArr } from "@/lib/request-shape";
+import { describeAnthropicError } from "@/lib/api-error";
 
 export async function POST(request: Request) {
   let body: Partial<InterviewPrepInput>;
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ prep });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Interview prep generation failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const { message, status } = describeAnthropicError(err, "Interview prep generation failed.");
+    return NextResponse.json({ error: message }, { status });
   }
 }

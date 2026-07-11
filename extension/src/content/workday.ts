@@ -1,4 +1,4 @@
-import type { AutofillPackage, BaseProfile, JobPosting, QuestionAnswer, RuntimeMessage } from "../types";
+import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type CustomFillRule, type JobPosting, type QuestionAnswer, type RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
 import { undoFill } from "./dom-utils";
@@ -72,6 +72,37 @@ async function getFillSource(): Promise<{ pkg: AutofillPackage; tailored: boolea
   return null;
 }
 
+/** User-defined answers from the popup, plus the dedicated
+ * "How did you hear about us?" default when set. */
+async function getCustomRules(): Promise<CustomFillRule[]> {
+  try {
+    const data = await chrome.storage.local.get([STORAGE_KEYS.customRules, STORAGE_KEYS.hearAboutUs]);
+    const rules = Array.isArray(data[STORAGE_KEYS.customRules])
+      ? (data[STORAGE_KEYS.customRules] as CustomFillRule[])
+      : [];
+    const hearAboutUs = data[STORAGE_KEYS.hearAboutUs] as string | undefined;
+    if (hearAboutUs?.trim()) {
+      rules.push({ label: "how did you hear", value: hearAboutUs.trim() });
+    }
+    return rules;
+  } catch {
+    return []; // orphaned script
+  }
+}
+
+/** Days since the package was tailored; a stale one deserves a nudge. */
+function packageAgeDays(pkg: AutofillPackage): number {
+  return Math.floor((Date.now() - new Date(pkg.createdAt).getTime()) / 86_400_000);
+}
+
+function staleWarning(pkg: AutofillPackage, tailored: boolean): string {
+  if (!tailored) return "";
+  const days = packageAgeDays(pkg);
+  return days >= 7
+    ? ` ⚠ This package was tailored ${days} days ago — if this is a different posting, re-tailor it in the web app first.`
+    : "";
+}
+
 async function runAutofillNow(widget: { setStatus(text: string): void }) {
   const source = await getFillSource();
   if (!source) {
@@ -83,7 +114,7 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
       ? `Filling from "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100)...`
       : "Filling from your base profile...",
   );
-  const result = await runAutofill(source.pkg);
+  const result = await runAutofill(source.pkg, await getCustomRules());
   const parts = [`Filled ${result.filled.length} field group(s)`];
   if (result.filesAttached.length) parts.push(`attached ${result.filesAttached.join(" & ")}`);
   if (result.skipped.length) parts.push(`couldn't find: ${result.skipped.join(", ")}`);
@@ -91,10 +122,15 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
   if (result.leftForYou.length) {
     parts.push(`${result.leftForYou.length} personal/self-ID question(s) left for you to answer yourself`);
   }
+  if (result.stillRequired.length) {
+    parts.push(`STILL NEEDED — ${result.stillRequired.length} required field(s) are empty: ${result.stillRequired.join("; ")}`);
+  }
   const suffix = source.tailored
     ? "Review before continuing — nothing is submitted automatically."
     : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
-  widget.setStatus(`${parts.join(". ")}. ${suffix}`);
+  widget.setStatus(`${parts.join(". ")}. ${suffix}${staleWarning(source.pkg, source.tailored)}`);
+  // Toolbar badge mirrors the fill count for at-a-glance confirmation.
+  sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
   return result;
 }
 
@@ -107,7 +143,7 @@ function initApplicationFormWidget() {
       source === null
         ? "Nothing to fill from yet — save your resume profile in the Workdayz web app first."
         : source.tailored
-          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).`
+          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}`
           : "Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.",
     );
   });
@@ -222,10 +258,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
     if (!looksLikeApplicationForm()) return false;
     getFillSource().then(async (source) => {
       if (!source) {
-        sendResponse({ filled: [], skipped: [], filesAttached: [], leftForYou: [], mismatches: [] });
+        sendResponse({ filled: [], skipped: [], filesAttached: [], leftForYou: [], mismatches: [], stillRequired: [] });
         return;
       }
-      sendResponse(await runAutofill(source.pkg));
+      const result = await runAutofill(source.pkg, await getCustomRules());
+      sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
+      sendResponse(result);
     });
     return true;
   }

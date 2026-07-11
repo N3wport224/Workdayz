@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FollowUpNudge } from "@/components/FollowUpNudge";
 import { SetupChecklist } from "@/components/SetupChecklist";
 
 export default function Home() {
@@ -12,6 +13,8 @@ export default function Home() {
       </p>
 
       <SetupChecklist />
+
+      <FollowUpNudge />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Link

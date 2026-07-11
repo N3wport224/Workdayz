@@ -1,4 +1,4 @@
-import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary } from "../types";
+import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
 
 const webAppUrlInput = document.getElementById("webAppUrl") as HTMLInputElement;
 const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
@@ -9,9 +9,20 @@ const autofillBtn = document.getElementById("autofillBtn") as HTMLButtonElement;
 const autofillStatus = document.getElementById("autofillStatus") as HTMLDivElement;
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement;
 const clearStatus = document.getElementById("clearStatus") as HTMLDivElement;
+const profileStatusEl = document.getElementById("profileStatus") as HTMLDivElement;
+const hearAboutUsInput = document.getElementById("hearAboutUs") as HTMLInputElement;
+const customRulesInput = document.getElementById("customRules") as HTMLTextAreaElement;
+const saveRulesBtn = document.getElementById("saveRulesBtn") as HTMLButtonElement;
+const rulesStatus = document.getElementById("rulesStatus") as HTMLDivElement;
 
 async function init() {
-  const stored = await chrome.storage.local.get([STORAGE_KEYS.webAppOrigin, STORAGE_KEYS.autofillPackage]);
+  const stored = await chrome.storage.local.get([
+    STORAGE_KEYS.webAppOrigin,
+    STORAGE_KEYS.autofillPackage,
+    STORAGE_KEYS.baseProfile,
+    STORAGE_KEYS.customRules,
+    STORAGE_KEYS.hearAboutUs,
+  ]);
   const origin = (stored[STORAGE_KEYS.webAppOrigin] as string | undefined) ?? "http://localhost:3000";
   webAppUrlInput.value = origin;
 
@@ -19,6 +30,17 @@ async function init() {
   statusEl.textContent = pkg
     ? `Ready: "${pkg.job.title}" at ${pkg.job.company} (ATS ${pkg.atsScore}/100), generated ${new Date(pkg.createdAt).toLocaleString()}.`
     : "No tailored application yet — generate one in the web app.";
+
+  const profile = stored[STORAGE_KEYS.baseProfile] as BaseProfile | undefined;
+  profileStatusEl.textContent = profile
+    ? `Base profile: ${profile.contact.firstName} ${profile.contact.lastName} (${profile.experience.length} role(s))${
+        profile.syncedAt ? `, synced ${new Date(profile.syncedAt).toLocaleString()}` : ""
+      }.`
+    : "No base profile synced — save your resume on the web app's Resume page with this extension connected.";
+
+  hearAboutUsInput.value = (stored[STORAGE_KEYS.hearAboutUs] as string | undefined) ?? "";
+  const rules = (stored[STORAGE_KEYS.customRules] as CustomFillRule[] | undefined) ?? [];
+  customRulesInput.value = rules.map((r) => `${r.label} = ${r.value}`).join("\n");
 }
 
 connectBtn.addEventListener("click", async () => {
@@ -64,6 +86,25 @@ autofillBtn.addEventListener("click", async () => {
   } catch {
     autofillStatus.textContent = "Couldn't reach this tab — open a Workday application page first.";
   }
+});
+
+saveRulesBtn.addEventListener("click", async () => {
+  const rules: CustomFillRule[] = customRulesInput.value
+    .split("\n")
+    .map((line) => {
+      const eq = line.indexOf("=");
+      if (eq < 1) return null;
+      return { label: line.slice(0, eq).trim(), value: line.slice(eq + 1).trim() };
+    })
+    .filter((r): r is CustomFillRule => Boolean(r && r.label && r.value))
+    .slice(0, 20);
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.customRules]: rules,
+    [STORAGE_KEYS.hearAboutUs]: hearAboutUsInput.value.trim(),
+  });
+  rulesStatus.textContent = `Saved ${rules.length} custom answer(s)${
+    hearAboutUsInput.value.trim() ? ` + the "How did you hear about us?" default` : ""
+  }.`;
 });
 
 clearBtn.addEventListener("click", async () => {

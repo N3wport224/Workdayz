@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { analyzeBullet } from "@/lib/bullet-strength";
-import type { ContactInfo, EducationEntry, ResumeProfile, WorkExperience } from "@/lib/types";
+import type { ContactInfo, EducationEntry, ProjectEntry, ResumeProfile, WorkExperience } from "@/lib/types";
 
 function BulletStrengthDot({ bullet }: { bullet: string }) {
   if (!bullet.trim()) return null;
@@ -84,6 +84,14 @@ export function ProfileForm({
           ? { ...e, bullets: e.bullets.map((b, i) => (i === index ? value : b)) }
           : e,
       ),
+    }));
+    setSaved(false);
+  }
+
+  function updateProject(id: string, patch: Partial<ProjectEntry>) {
+    setProfile((p) => ({
+      ...p,
+      projects: (p.projects ?? []).map((proj) => (proj.id === id ? { ...proj, ...patch } : proj)),
     }));
     setSaved(false);
   }
@@ -329,6 +337,52 @@ export function ProfileForm({
               }}
             >
               Remove
+            </button>
+          </div>
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Projects (optional)</h2>
+          <button
+            type="button"
+            className="text-sm text-blue-600 dark:text-blue-400"
+            onClick={() => {
+              setProfile((p) => ({
+                ...p,
+                projects: [...(p.projects ?? []), { id: crypto.randomUUID(), name: "", description: "" }],
+              }));
+              setSaved(false);
+            }}
+          >
+            + Add project
+          </button>
+        </div>
+        {(profile.projects ?? []).map((proj) => (
+          <div key={proj.id} className="rounded-lg border border-black/10 dark:border-white/15 p-3 space-y-2">
+            <input
+              className={inputClass}
+              placeholder="Project name"
+              value={proj.name}
+              onChange={(e) => updateProject(proj.id, { name: e.target.value })}
+            />
+            <textarea
+              className={inputClass}
+              rows={2}
+              placeholder="What it is, what you built, and the result"
+              value={proj.description}
+              onChange={(e) => updateProject(proj.id, { description: e.target.value })}
+            />
+            <button
+              type="button"
+              className="text-xs text-rose-600 dark:text-rose-400"
+              onClick={() => {
+                setProfile((p) => ({ ...p, projects: (p.projects ?? []).filter((x) => x.id !== proj.id) }));
+                setSaved(false);
+              }}
+            >
+              Remove project
             </button>
           </div>
         ))}

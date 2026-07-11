@@ -4,17 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { StatusBadge } from "@/components/StatusBadge";
 import {
+  bulkArchiveRejected,
   countTailoredSince,
   deleteApplication,
   importApplications,
   isFollowUpOverdue,
   loadApplications,
+  setArchived,
   statusSince,
   updateApplication,
   updateApplicationStatus,
 } from "@/lib/applications";
 import type { MessageKind } from "@/lib/generate-message";
 import { applicationsToCsv } from "@/lib/csv";
+import { prepToMarkdown } from "@/lib/prep-markdown";
+import { safeFilenamePart } from "@/lib/safe-filename";
 import { fetchPdfAsBase64, onExtensionDetected, sendPackageToExtension } from "@/lib/extension-bridge";
 import { APPLICATION_STATUSES, type ApplicationStatus, type AutofillPackage, type SavedApplication } from "@/lib/types";
 
@@ -26,6 +30,8 @@ export default function ApplicationsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
   const [sortBy, setSortBy] = useState<"newest" | "ats" | "company">("newest");
+  const [view, setView] = useState<"list" | "board">("list");
+  const [showArchived, setShowArchived] = useState(false);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
@@ -70,16 +76,20 @@ export default function ApplicationsPage() {
     );
   }
 
-  const statusCounts = applications.reduce<Record<string, number>>((acc, a) => {
+  // Stats describe the active pipeline; archived entries are history.
+  const active = applications.filter((a) => !a.archived);
+  const archivedCount = applications.length - active.length;
+  const statusCounts = active.reduce<Record<string, number>>((acc, a) => {
     acc[a.status] = (acc[a.status] ?? 0) + 1;
     return acc;
   }, {});
-  const avgAts = Math.round(
-    applications.reduce((sum, a) => sum + a.atsScore.score, 0) / applications.length,
-  );
+  const avgAts = active.length
+    ? Math.round(active.reduce((sum, a) => sum + a.atsScore.score, 0) / active.length)
+    : 0;
 
   const q = query.trim().toLowerCase();
   const visible = applications
+    .filter((a) => showArchived || !a.archived)
     .filter((a) => statusFilter === "all" || a.status === statusFilter)
     .filter(
       (a) =>
@@ -120,7 +130,8 @@ export default function ApplicationsPage() {
       <h1 className="text-2xl font-bold mb-4">Application tracker</h1>
       <div className="flex flex-wrap gap-4 mb-6 text-sm">
         <span className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5">
-          <span className="font-semibold">{applications.length}</span> total
+          <span className="font-semibold">{active.length}</span> active
+          {archivedCount > 0 ? <span className="opacity-60"> · {archivedCount} archived</span> : null}
         </span>
         {APPLICATION_STATUSES.filter((s) => statusCounts[s]).map((s) => (
           <span key={s} className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5 flex items-center gap-2">
@@ -132,10 +143,23 @@ export default function ApplicationsPage() {
           avg ATS <span className="font-semibold">{avgAts}</span>
         </span>
         <span className="rounded-lg border border-black/10 dark:border-white/15 px-3 py-1.5">
-          7d <span className="font-semibold">{countTailoredSince(applications, 7)}</span> · 30d{" "}
-          <span className="font-semibold">{countTailoredSince(applications, 30)}</span>
+          7d <span className="font-semibold">{countTailoredSince(active, 7)}</span> · 30d{" "}
+          <span className="font-semibold">{countTailoredSince(active, 30)}</span>
         </span>
         <span className="flex items-center gap-3 ml-auto">
+          {active.some((a) => a.status === "rejected") ? (
+            <button
+              onClick={() => {
+                const n = bulkArchiveRejected();
+                setBackupStatus(`Archived ${n} rejected application${n === 1 ? "" : "s"}.`);
+                refresh();
+              }}
+              className="text-blue-600 dark:text-blue-400"
+              title="Move all rejected applications out of the active views"
+            >
+              Archive rejected
+            </button>
+          ) : null}
           <button
             onClick={() => {
               const blob = new Blob([applicationsToCsv(applications)], { type: "text/csv" });
@@ -199,55 +223,133 @@ export default function ApplicationsPage() {
           <option value="ats">Highest ATS</option>
           <option value="company">Company A-Z</option>
         </select>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
-        <ul className="space-y-2">
-          {visible.length === 0 ? (
-            <li className="text-sm opacity-60 p-2">No applications match.</li>
-          ) : null}
-          {visible.map((app) => (
-            <li key={app.id}>
-              <button
-                onClick={() => setSelectedId(app.id)}
-                className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                  app.id === selectedId
-                    ? "border-blue-500 bg-blue-500/5"
-                    : "border-black/10 dark:border-white/15 hover:border-blue-500/50"
-                }`}
-              >
-                <p className="font-medium text-sm truncate">{app.job.title || "Untitled role"}</p>
-                <p className="text-xs opacity-70 truncate">{app.job.company}</p>
-                <div className="flex items-center justify-between mt-2">
-                  <span className="flex items-center gap-1.5">
-                    <StatusBadge status={app.status} />
-                    {isFollowUpOverdue(app) ? (
-                      <span
-                        title={`Follow-up was due ${app.followUpAt}`}
-                        className="text-xs text-amber-700 dark:text-amber-300 font-medium"
-                      >
-                        ⏰ follow up
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-xs opacity-60">ATS {app.atsScore.score}</span>
-                </div>
-              </button>
-            </li>
+        <div className="flex rounded-md border border-black/15 dark:border-white/20 overflow-hidden text-sm">
+          {(["list", "board"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-3 py-1.5 ${view === v ? "bg-blue-600 text-white" : "opacity-70"}`}
+            >
+              {v === "list" ? "List" : "Board"}
+            </button>
           ))}
-        </ul>
-
-        {selected ? (
-          <ApplicationDetail
-            application={selected}
-            extensionPresent={extensionPresent}
-            onStatusChange={(status) => handleStatusChange(selected.id, status)}
-            onDelete={() => handleDelete(selected.id)}
-            onUpdated={refresh}
-          />
-        ) : (
-          <p className="text-sm opacity-70">Select an application to view details.</p>
-        )}
+        </div>
+        {archivedCount > 0 ? (
+          <label className="flex items-center gap-1.5 text-xs opacity-80">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+            />
+            Show archived ({archivedCount})
+          </label>
+        ) : null}
       </div>
+      {view === "board" ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            {APPLICATION_STATUSES.map((s) => {
+              const column = visible.filter((a) => a.status === s);
+              return (
+                <div key={s} className="rounded-lg border border-black/10 dark:border-white/15 p-2 min-h-24">
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <StatusBadge status={s} />
+                    <span className="text-xs opacity-60">{column.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {column.map((app) => (
+                      <button
+                        key={app.id}
+                        onClick={() => setSelectedId(app.id)}
+                        className={`w-full text-left rounded-md border p-2 transition-colors ${
+                          app.id === selectedId
+                            ? "border-blue-500 bg-blue-500/5"
+                            : "border-black/10 dark:border-white/15 hover:border-blue-500/50"
+                        }`}
+                      >
+                        <p className="text-xs font-medium truncate">{app.job.title || "Untitled role"}</p>
+                        <p className="text-[11px] opacity-70 truncate">{app.job.company}</p>
+                        <div className="flex items-center justify-between mt-1 text-[11px]">
+                          <span className="opacity-60">ATS {app.atsScore.score}</span>
+                          <span className="flex items-center gap-1">
+                            {app.archived ? <span className="opacity-50">archived</span> : null}
+                            {isFollowUpOverdue(app) ? (
+                              <span className="text-amber-700 dark:text-amber-300" title={`Follow-up was due ${app.followUpAt}`}>
+                                ⏰
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {selected ? (
+            <ApplicationDetail
+              application={selected}
+              extensionPresent={extensionPresent}
+              onStatusChange={(status) => handleStatusChange(selected.id, status)}
+              onDelete={() => handleDelete(selected.id)}
+              onUpdated={refresh}
+            />
+          ) : (
+            <p className="text-sm opacity-70">Select a card to view details.</p>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
+          <ul className="space-y-2">
+            {visible.length === 0 ? (
+              <li className="text-sm opacity-60 p-2">No applications match.</li>
+            ) : null}
+            {visible.map((app) => (
+              <li key={app.id}>
+                <button
+                  onClick={() => setSelectedId(app.id)}
+                  className={`w-full text-left rounded-lg border p-3 transition-colors ${
+                    app.id === selectedId
+                      ? "border-blue-500 bg-blue-500/5"
+                      : "border-black/10 dark:border-white/15 hover:border-blue-500/50"
+                  } ${app.archived ? "opacity-60" : ""}`}
+                >
+                  <p className="font-medium text-sm truncate">{app.job.title || "Untitled role"}</p>
+                  <p className="text-xs opacity-70 truncate">{app.job.company}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="flex items-center gap-1.5">
+                      <StatusBadge status={app.status} />
+                      {app.archived ? <span className="text-xs opacity-50">archived</span> : null}
+                      {isFollowUpOverdue(app) ? (
+                        <span
+                          title={`Follow-up was due ${app.followUpAt}`}
+                          className="text-xs text-amber-700 dark:text-amber-300 font-medium"
+                        >
+                          ⏰ follow up
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="text-xs opacity-60">ATS {app.atsScore.score}</span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {selected ? (
+            <ApplicationDetail
+              application={selected}
+              extensionPresent={extensionPresent}
+              onStatusChange={(status) => handleStatusChange(selected.id, status)}
+              onDelete={() => handleDelete(selected.id)}
+              onUpdated={refresh}
+            />
+          ) : (
+            <p className="text-sm opacity-70">Select an application to view details.</p>
+          )}
+        </div>
+      )}
     </main>
   );
 }
@@ -341,6 +443,8 @@ function ApplicationDetail({
       experience: application.experience,
       education: application.education,
       certifications: application.certifications,
+      projects: application.projects,
+      companyName: application.job.company,
     });
     triggerDownload(base64, fileName);
   }
@@ -371,6 +475,8 @@ function ApplicationDetail({
           experience: application.experience,
           education: application.education,
           certifications: application.certifications,
+          projects: application.projects,
+          companyName: application.job.company,
         }),
         fetchPdfAsBase64("/api/cover-letter-pdf", {
           contact: application.contact,
@@ -425,6 +531,16 @@ function ApplicationDetail({
             Tailored {new Date(application.createdAt).toLocaleString()} · in{" "}
             {application.status} for {daysSince(statusSince(application))}
           </p>
+          {application.job.sourceUrl ? (
+            <a
+              href={application.job.sourceUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="text-xs text-blue-600 dark:text-blue-400 mt-1 inline-block"
+            >
+              Open original posting ↗
+            </a>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <select
@@ -457,6 +573,25 @@ function ApplicationDetail({
         <p className="font-medium mb-1">ATS score: {application.atsScore.score}/100</p>
         <p className="opacity-70">{application.atsScore.notes}</p>
       </div>
+
+      {application.statusHistory?.length ? (
+        <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 text-sm">
+          <p className="font-medium mb-2">Status timeline</p>
+          <ol className="space-y-1 text-xs">
+            <li className="opacity-70">
+              <span className="font-medium">draft</span> — created{" "}
+              {new Date(application.createdAt).toLocaleDateString()}
+            </li>
+            {application.statusHistory.map((entry, i) => (
+              <li key={i} className={i === application.statusHistory!.length - 1 ? "" : "opacity-70"}>
+                <span className="opacity-50">→ </span>
+                <span className="font-medium">{entry.status}</span> —{" "}
+                {new Date(entry.at).toLocaleDateString()}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : null}
 
       {application.fitAnalysis?.verdict ? (
         <div className="rounded-lg border border-black/10 dark:border-white/15 p-4 text-sm">
@@ -496,17 +631,37 @@ function ApplicationDetail({
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-sm">Interview prep</h3>
-          <button
-            onClick={generatePrep}
-            disabled={prepLoading}
-            className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-          >
-            {prepLoading
-              ? "Generating..."
-              : application.interviewPrep
-                ? "Regenerate"
-                : "Generate likely questions & talking points"}
-          </button>
+          <div className="flex items-center gap-2">
+            {application.interviewPrep ? (
+              <button
+                onClick={() => {
+                  const md = prepToMarkdown(application);
+                  const blob = new Blob([md], { type: "text/markdown" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `Interview_Prep_${safeFilenamePart(application.job.company, "job")}.md`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium"
+                title="Download as Markdown for your notes app"
+              >
+                Export .md
+              </button>
+            ) : null}
+            <button
+              onClick={generatePrep}
+              disabled={prepLoading}
+              className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+            >
+              {prepLoading
+                ? "Generating..."
+                : application.interviewPrep
+                  ? "Regenerate"
+                  : "Generate likely questions & talking points"}
+            </button>
+          </div>
         </div>
         {prepError ? <p className="text-sm text-rose-600 dark:text-rose-400 mb-2">{prepError}</p> : null}
         {application.interviewPrep ? (
@@ -610,8 +765,18 @@ function ApplicationDetail({
           Send to extension
         </button>
         <button
+          onClick={() => {
+            setArchived(application.id, !application.archived);
+            onUpdated();
+          }}
+          className="rounded-md border border-black/15 dark:border-white/20 px-4 py-2 text-sm font-medium ml-auto"
+          title="Archived entries are hidden from the default views but kept in exports"
+        >
+          {application.archived ? "Unarchive" : "Archive"}
+        </button>
+        <button
           onClick={onDelete}
-          className="rounded-md text-rose-600 dark:text-rose-400 px-4 py-2 text-sm font-medium ml-auto"
+          className="rounded-md text-rose-600 dark:text-rose-400 px-4 py-2 text-sm font-medium"
         >
           Delete
         </button>

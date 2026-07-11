@@ -5,7 +5,18 @@ import { ProfileForm } from "@/components/ProfileForm";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
 import { sendProfileToExtension } from "@/lib/extension-bridge";
 import { computeCompleteness } from "@/lib/profile-completeness";
-import { emptyProfile, loadProfile, mergeProfile, saveProfile } from "@/lib/storage";
+import {
+  createProfile,
+  deleteProfile,
+  emptyProfile,
+  listProfiles,
+  loadProfile,
+  mergeProfile,
+  renameProfile,
+  saveProfile,
+  switchProfile,
+  wipeAllData,
+} from "@/lib/storage";
 import type { ResumeProfile } from "@/lib/types";
 
 export default function ProfilePage() {
@@ -13,12 +24,21 @@ export default function ProfilePage() {
   const [loaded, setLoaded] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [profiles, setProfiles] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setProfile(loadProfile());
+    setProfiles(listProfiles());
     setLoaded(true);
   }, []);
+
+  function reloadActive() {
+    setProfile(loadProfile());
+    setProfiles(listProfiles());
+    setFormKey((k) => k + 1);
+    sendProfileToExtension(loadProfile());
+  }
 
   function persistProfile(next: ResumeProfile) {
     setProfile(next); // keeps the completeness meter live without remounting the form
@@ -63,7 +83,69 @@ export default function ProfilePage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mt-2">Your base resume</h1>
+        <div className="flex items-center justify-between mt-2">
+          <h1 className="text-2xl font-bold">Your base resume</h1>
+          <div className="flex items-center gap-2 text-sm">
+            <select
+              className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-sm"
+              value={profiles.find((p) => p.active)?.id ?? ""}
+              onChange={(e) => {
+                switchProfile(e.target.value);
+                reloadActive();
+              }}
+            >
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="text-xs text-blue-600 dark:text-blue-400"
+              onClick={() => {
+                const name = window.prompt("Name for the new profile (e.g. \"PM resume\"):");
+                if (!name) return;
+                const copy = window.confirm("Start from a copy of the current profile? (Cancel = start blank)");
+                createProfile(name, copy);
+                reloadActive();
+              }}
+            >
+              + New
+            </button>
+            <button
+              type="button"
+              className="text-xs opacity-60 hover:opacity-100"
+              onClick={() => {
+                const active = profiles.find((p) => p.active);
+                if (!active) return;
+                const name = window.prompt("Rename profile:", active.name);
+                if (name) {
+                  renameProfile(active.id, name);
+                  setProfiles(listProfiles());
+                }
+              }}
+            >
+              Rename
+            </button>
+            <button
+              type="button"
+              className="text-xs text-rose-600 dark:text-rose-400"
+              onClick={() => {
+                const active = profiles.find((p) => p.active);
+                if (!active) return;
+                if (!window.confirm(`Delete the "${active.name}" profile? This can't be undone.`)) return;
+                if (!deleteProfile(active.id)) {
+                  window.alert("You can't delete your only profile.");
+                  return;
+                }
+                reloadActive();
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
         <p className="text-sm opacity-70 mt-1">
           This is your ground truth. It stays on your device (browser local storage) — it&apos;s
           never uploaded anywhere except to the tailoring API when you generate an application.
@@ -118,6 +200,25 @@ export default function ProfilePage() {
       </div>
       <ResumeImportPanel onImported={replaceProfile} />
       <ProfileForm key={formKey} initial={profile} onSave={persistProfile} />
+
+      <div className="mt-12 pt-6 border-t border-black/10 dark:border-white/15">
+        <button
+          type="button"
+          className="text-xs text-rose-600 dark:text-rose-400"
+          onClick={() => {
+            if (
+              !window.confirm(
+                "Delete ALL Workdayz data in this browser — every profile, tracked application, and draft? This cannot be undone.\n\nAlso click \"Clear stored application data\" in the extension popup to wipe its copy.",
+              )
+            )
+              return;
+            wipeAllData();
+            window.location.reload();
+          }}
+        >
+          Delete all my data from this browser
+        </button>
+      </div>
     </main>
   );
 }

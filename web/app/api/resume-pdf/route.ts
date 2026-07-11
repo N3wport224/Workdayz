@@ -5,7 +5,7 @@ import { ResumeDocument, type ResumePdfProps } from "@/lib/pdf/ResumeDocument";
 import { safeFilenamePart } from "@/lib/safe-filename";
 
 export async function POST(request: Request) {
-  let body: ResumePdfProps;
+  let body: ResumePdfProps & { companyName?: string };
   try {
     body = await request.json();
   } catch {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Resume.pdf"`,
+        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Resume${body.companyName ? `_${safeFilenamePart(body.companyName, "")}` : ""}.pdf"`,
       },
     });
   } catch (err) {

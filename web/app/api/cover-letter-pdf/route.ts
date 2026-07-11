@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Cover_Letter.pdf"`,
+        "Content-Disposition": `attachment; filename="${safeFilenamePart(`${body.contact.firstName}_${body.contact.lastName}`, "Candidate")}_Cover_Letter${body.companyName ? `_${safeFilenamePart(body.companyName, "")}` : ""}.pdf"`,
       },
     });
   } catch (err) {

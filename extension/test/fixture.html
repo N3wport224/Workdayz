@@ -108,6 +108,26 @@
     </div>
   </fieldset>
 
+  <!-- Filled only via user-defined custom rules -->
+  <div class="formField">
+    <label for="salary">Desired Salary</label>
+    <input id="salary" type="text" />
+  </div>
+  <div class="formField" data-automation-id="formField-sourceDropdown">
+    <label id="hear-label">How Did You Hear About Us?</label>
+    <button id="hear-btn" aria-haspopup="listbox" aria-labelledby="hear-label">Select One</button>
+    <ul role="listbox" class="hidden">
+      <li role="option">Company Website</li>
+      <li role="option">LinkedIn</li>
+      <li role="option">Referral</li>
+    </ul>
+  </div>
+  <!-- Required, never autofilled: must show up in the still-required report -->
+  <div class="formField">
+    <label for="empId">Employee ID</label>
+    <input id="empId" type="text" aria-required="true" />
+  </div>
+
   <h1>Documents</h1>
   <div class="formField">
     <label for="portfolioUpload">Portfolio sample (optional)</label>
