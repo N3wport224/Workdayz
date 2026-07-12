@@ -184,9 +184,9 @@ export default function ApplyPage() {
       const tailored = data as TailorResult;
       setVariants([tailored]);
       setActiveVariant(0);
-      adoptResult(tailored);
+      const freshEdits = adoptResult(tailored);
       noteCost(tailored.usage);
-      persistSnapshot(tailored, tailored.coverLetter, tailored.tailoredResume.summary, tailored.tailoredResume.skills);
+      persistSnapshot(tailored, tailored.coverLetter, tailored.tailoredResume.summary, tailored.tailoredResume.skills, freshEdits);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -231,15 +231,17 @@ export default function ApplyPage() {
 
   /** Makes a tailor result the active working copy (fresh tailor or a
    * variant-tab switch): editable fields and bullet edits reset to it. */
-  function adoptResult(tailored: TailorResult) {
+  function adoptResult(tailored: TailorResult): Record<string, string[]> {
+    const edits = Object.fromEntries(
+      tailored.tailoredResume.experience.map((e) => [e.id, [...e.bullets]]),
+    );
     setResult(tailored);
     setCoverLetter(tailored.coverLetter);
     setSummaryText(tailored.tailoredResume.summary);
     setSkillsText(tailored.tailoredResume.skills.join(", "));
     setLetterDrafts([]);
-    setBulletEdits(
-      Object.fromEntries(tailored.tailoredResume.experience.map((e) => [e.id, [...e.bullets]])),
-    );
+    setBulletEdits(edits);
+    return edits;
   }
 
   /** Generates an alternate take on the same job (different emphasis) and
@@ -267,12 +269,10 @@ export default function ApplyPage() {
       if (!res.ok) throw new Error(data.error || "Variant generation failed.");
       const variant = data as TailorResult;
       noteCost(variant.usage);
-      setVariants((prev) => {
-        setActiveVariant(prev.length);
-        return [...prev, variant];
-      });
-      adoptResult(variant);
-      persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills);
+      setVariants([...variants, variant]);
+      setActiveVariant(variants.length);
+      const freshEdits = adoptResult(variant);
+      persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills, freshEdits);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -284,8 +284,8 @@ export default function ApplyPage() {
     const variant = variants[index];
     if (!variant) return;
     setActiveVariant(index);
-    adoptResult(variant);
-    persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills);
+    const freshEdits = adoptResult(variant);
+    persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills, freshEdits);
   }
 
   /** AI-rewrites one bullet, bounded by the role's ORIGINAL bullets. */
@@ -441,6 +441,9 @@ export default function ApplyPage() {
     coverLetterText: string,
     summaryArg?: string,
     skillsArg?: string[],
+    /** Pass when `bulletEdits` state is about to change (fresh tailor /
+     * variant switch) — the state value is still the OLD variant's edits. */
+    editsArg?: Record<string, string[]>,
   ) {
     if (!profile) return;
     const now = new Date().toISOString();
@@ -453,7 +456,7 @@ export default function ApplyPage() {
       contact: profile.contact,
       summary: summaryArg ?? summaryText,
       skills: skillsArg ?? parseSkills(skillsText),
-      experience: mergedExperience(profile, tailored, bulletEdits),
+      experience: mergedExperience(profile, tailored, editsArg ?? bulletEdits),
       education: profile.education,
       certifications: profile.certifications,
       projects: profile.projects,
@@ -468,6 +471,7 @@ export default function ApplyPage() {
 
   async function downloadResumePdf() {
     if (!profile || !result) return;
+    persistSnapshot(result, coverLetter); // capture bullet/summary edits
     const merged = mergedExperience(profile, result, bulletEdits);
     const { base64, fileName } = await fetchPdfAsBase64("/api/resume-pdf", {
       contact: profile.contact,
@@ -485,6 +489,7 @@ export default function ApplyPage() {
 
   async function downloadResumeDocx() {
     if (!profile || !result) return;
+    persistSnapshot(result, coverLetter); // capture bullet/summary edits
     const merged = mergedExperience(profile, result, bulletEdits);
     const { base64, fileName } = await fetchPdfAsBase64("/api/resume-docx", {
       contact: profile.contact,
