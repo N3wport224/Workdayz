@@ -108,6 +108,9 @@
     </div>
   </fieldset>
 
+  <!-- Workday-style section grower: appends a new panel asynchronously -->
+  <button id="addWork" data-automation-id="add-button" type="button">Add Another Work Experience</button>
+
   <!-- Filled only via user-defined custom rules -->
   <div class="formField">
     <label for="salary">Desired Salary</label>
@@ -156,6 +159,20 @@
   <button data-automation-id="bottom-navigation-next-button">Save and Continue</button>
 
   <script>
+    // Mimic Workday's "Add Another": a new panel renders ASYNCHRONOUSLY.
+    let workCount = 2;
+    document.getElementById("addWork").addEventListener("click", () => {
+      workCount++;
+      const n = workCount;
+      const fs = document.createElement("fieldset");
+      fs.setAttribute("data-automation-id", "workExperience-" + n);
+      fs.innerHTML =
+        "<legend>Work Experience " + n + "</legend>" +
+        '<div class="formField"><label for="jobTitle' + n + '">Job Title</label><input id="jobTitle' + n + '" type="text" /></div>' +
+        '<div class="formField"><label for="company' + n + '">Company</label><input id="company' + n + '" type="text" /></div>';
+      setTimeout(() => document.getElementById("addWork").before(fs), 250);
+    });
+
     // Mimic Workday's listbox behavior: click button -> show options,
     // click option -> set button text, hide list.
     document.querySelectorAll('button[aria-haspopup="listbox"]').forEach((btn) => {

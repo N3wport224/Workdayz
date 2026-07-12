@@ -105,6 +105,16 @@ try {
     { label: "how did you hear", value: "LinkedIn" },
     { label: "veteran", value: "should never fill" }, // self-ID stays off-limits
   ];
+
+  // Dry-run preview first: highlights targets but writes NOTHING.
+  const preview = await page.evaluate(
+    ({ p, rules }) => window.WorkdayzTest.previewAutofill(p, rules),
+    { p: pkg, rules: customRules },
+  );
+  check("preview reports targets", preview.wouldFill.length >= 5, JSON.stringify(preview));
+  check("preview reports resume attach", preview.files.includes("resume"));
+  check("preview writes nothing", (await page.$eval("#firstName", (el) => el.value)) === "");
+
   const summary = await page.evaluate(
     async ({ p, rules }) => window.WorkdayzTest.runAutofill(p, rules),
     { p: pkg, rules: customRules },
@@ -161,8 +171,18 @@ try {
   );
 
   check(
-    "third experience reported as remaining",
-    summary.skipped.some((s) => s.includes("1 more work experience")),
+    "third experience filled via Add Another (async panel)",
+    (await val("#jobTitle3")) === "Junior Engineer" && (await val("#company3")) === "Initech",
+    `jobTitle3="${await val("#jobTitle3")}"`,
+  );
+  check(
+    "all three experience panels reported filled",
+    summary.filled.some((s) => s.includes("3 work experience panel")),
+    JSON.stringify(summary.filled),
+  );
+  check(
+    "no experience reported as remaining",
+    !summary.skipped.some((s) => s.includes("more work experience")),
     JSON.stringify(summary.skipped),
   );
 

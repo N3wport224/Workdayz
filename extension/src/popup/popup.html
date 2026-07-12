@@ -90,7 +90,14 @@
       <input id="hearAboutUs" type="text" placeholder="e.g. LinkedIn" />
       <label for="customRules">Custom answers (one per line: field label = value)</label>
       <textarea id="customRules" rows="3" placeholder="Desired salary = 85000&#10;Notice period = 2 weeks"></textarea>
+      <label for="tenantRules" id="tenantRulesLabel" style="display: none">Rules only for this site</label>
+      <textarea id="tenantRules" rows="2" style="display: none" placeholder="Employee ID = N/A"></textarea>
       <button id="saveRulesBtn" class="secondary">Save answers</button>
+      <div style="display: flex; gap: 6px; margin-top: 6px">
+        <button id="exportRulesBtn" class="secondary" title="Copies all rules as JSON to the clipboard">Export rules</button>
+        <button id="importRulesBtn" class="secondary" title="Paste a rules JSON export, then apply it">Import rules</button>
+      </div>
+      <textarea id="importArea" rows="3" style="display: none; margin-top: 6px" placeholder='Paste the exported rules JSON here, then click "Import rules" again'></textarea>
       <div id="rulesStatus"></div>
     </section>
 

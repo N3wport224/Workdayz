@@ -13,6 +13,8 @@ import {
   findFillableFields,
   findListboxButtonBySynonyms,
   findPanelContainer,
+  flashPreviewField,
+  isVisible,
   setCheckbox,
   setFieldValue,
   startFillLog,
@@ -109,35 +111,91 @@ function fillWithinPanel(
   }
 }
 
+/** Finds this section's "Add Another" button. Deliberately conservative:
+ * text must START with "add", never contain navigation/submission words, and
+ * a bare "Add"/"Add Another" is only trusted when it's unambiguous (exactly
+ * one on the page). */
+function findAddButton(sectionTerms: string[]): HTMLElement | null {
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'));
+  const bare: HTMLElement[] = [];
+  for (const el of candidates) {
+    if (!isVisible(el)) continue;
+    const text = (el.textContent ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!/^add\b/.test(text)) continue;
+    if (/\b(submit|continue|next|save|apply)\b/.test(text)) continue;
+    if (sectionTerms.some((term) => text.includes(term))) return el;
+    if (text === "add" || text === "add another") bare.push(el);
+  }
+  return bare.length === 1 ? bare[0] : null;
+}
+
+function countAnchors(anchorSynonyms: string[]): number {
+  return findAllFieldsBySynonyms(findFillableFields(), anchorSynonyms, { onlyEmpty: false }).length;
+}
+
+function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve) => {
+    const poll = () => {
+      if (condition()) return resolve(true);
+      if (Date.now() > deadline) return resolve(false);
+      setTimeout(poll, 150);
+    };
+    poll();
+  });
+}
+
 /**
- * Fills as many repeated panels (one per work-experience/education entry) as
- * are currently rendered on the page, matching profile entries to panels in
- * DOM order. Does not click "Add Another" — if there are more profile
- * entries than visible panels, those are reported back so the user can add
- * more panels themselves and re-run.
+ * Fills one panel per profile entry, matching in DOM order. Panels already
+ * rendered are filled first; for the rest it clicks the section's "Add
+ * Another" button (strict label allowlist) and fills each new panel as it
+ * appears. Reports entries it still couldn't place.
  */
-function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
+async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
   entries: T[],
   anchorSynonyms: string[],
+  sectionTerms: string[],
   fillEntry: (panel: HTMLElement, entry: T, scoped: FillableElement[]) => void,
-): { filledCount: number; remaining: number } {
+): Promise<{ filledCount: number; remaining: number }> {
   if (entries.length === 0) return { filledCount: 0, remaining: 0 };
 
+  const usedPanels: HTMLElement[] = [];
   let pool = findFillableFields();
   const anchors = findAllFieldsBySynonyms(pool, anchorSynonyms, { onlyEmpty: false });
 
-  let filledCount = 0;
-  for (let i = 0; i < anchors.length && i < entries.length; i++) {
-    const panel = findPanelContainer(anchors[i], pool);
-    const scoped = pool.filter((f) => panel.contains(f));
-    fillEntry(panel, entries[i], scoped);
-    filledCount++;
+  let entryIndex = 0;
+  for (let i = 0; i < anchors.length && entryIndex < entries.length; i++) {
+    const panel = findPanelContainer(anchors[i], pool, anchors);
+    fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
+    usedPanels.push(panel);
+    entryIndex++;
     // Remove this panel's fields from the pool so later panels can't be
     // matched to the same fields if panel boundaries happened to overlap.
     pool = pool.filter((f) => !panel.contains(f));
   }
 
-  return { filledCount, remaining: Math.max(0, entries.length - anchors.length) };
+  // Grow the section for the remaining entries.
+  let safety = 10;
+  while (entryIndex < entries.length && safety-- > 0) {
+    const addButton = findAddButton(sectionTerms);
+    if (!addButton) break;
+    const before = countAnchors(anchorSynonyms);
+    addButton.click();
+    const appeared = await waitFor(() => countAnchors(anchorSynonyms) > before, 3000);
+    if (!appeared) break;
+    pool = findFillableFields().filter((f) => !usedPanels.some((p) => p.contains(f)));
+    const fresh = findAllFieldsBySynonyms(pool, anchorSynonyms, { onlyEmpty: false });
+    if (fresh.length === 0) break;
+    // Boundary detection uses every anchor on the page (incl. already-used
+    // panels) so the new panel's walk can't climb past its siblings.
+    const allAnchors = findAllFieldsBySynonyms(findFillableFields(), anchorSynonyms, { onlyEmpty: false });
+    const panel = findPanelContainer(fresh[0], pool, allAnchors);
+    fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
+    usedPanels.push(panel);
+    entryIndex++;
+  }
+
+  return { filledCount: entryIndex, remaining: entries.length - entryIndex };
 }
 
 /**
@@ -251,7 +309,7 @@ export async function runAutofill(
     summary.filled.push("cover letter text");
   }
 
-  const experienceResult = fillRepeatedSection(pkg.experience, TITLE_SYNONYMS, (panel, entry, scoped) => {
+  const experienceResult = await fillRepeatedSection(pkg.experience, TITLE_SYNONYMS, ["work experience", "experience", "job history"], (panel, entry, scoped) => {
     fillWithinPanel(panel, scoped, [
       [TITLE_SYNONYMS, entry.title],
       [COMPANY_SYNONYMS, entry.company],
@@ -272,11 +330,11 @@ export async function runAutofill(
   if (experienceResult.filledCount) summary.filled.push(`${experienceResult.filledCount} work experience panel(s)`);
   if (experienceResult.remaining) {
     summary.skipped.push(
-      `${experienceResult.remaining} more work experience entr${experienceResult.remaining === 1 ? "y" : "ies"} (click "Add Another Work Experience" and re-run)`,
+      `${experienceResult.remaining} more work experience entr${experienceResult.remaining === 1 ? "y" : "ies"} (couldn't find/grow this section's "Add Another" button — add the panel manually and re-run)`,
     );
   }
 
-  const educationResult = fillRepeatedSection(pkg.education, SCHOOL_SYNONYMS, (panel, entry, scoped) => {
+  const educationResult = await fillRepeatedSection(pkg.education, SCHOOL_SYNONYMS, ["education"], (panel, entry, scoped) => {
     fillWithinPanel(panel, scoped, [
       [SCHOOL_SYNONYMS, entry.school],
       [DEGREE_SYNONYMS, entry.degree],
@@ -293,12 +351,65 @@ export async function runAutofill(
   if (educationResult.filledCount) summary.filled.push(`${educationResult.filledCount} education panel(s)`);
   if (educationResult.remaining) {
     summary.skipped.push(
-      `${educationResult.remaining} more education entr${educationResult.remaining === 1 ? "y" : "ies"} (click "Add Another Education" and re-run)`,
+      `${educationResult.remaining} more education entr${educationResult.remaining === 1 ? "y" : "ies"} (couldn't find/grow this section's "Add Another" button — add the panel manually and re-run)`,
     );
   }
 
   summary.stillRequired = findEmptyRequiredFields();
   return summary;
+}
+
+export interface AutofillPreview {
+  wouldFill: string[];
+  files: string[];
+  experiencePanels: number;
+  educationPanels: number;
+}
+
+/**
+ * Dry run: highlights (dashed amber) the text fields autofill would write,
+ * WITHOUT writing anything. Dropdowns/comboboxes/dates resolve at fill time
+ * and aren't previewed — the summary says so.
+ */
+export function previewAutofill(pkg: AutofillPackage, customRules: CustomFillRule[] = []): AutofillPreview {
+  const fields = findFillableFields();
+  const wouldFill: string[] = [];
+
+  for (const [key, synonyms] of CONTACT_SYNONYMS) {
+    if (!pkg.contact[key]) continue;
+    const field = findFieldBySynonyms(fields, synonyms);
+    if (field) {
+      wouldFill.push(key);
+      flashPreviewField(field);
+    }
+  }
+  for (const rule of customRules) {
+    const label = rule.label.trim();
+    if (!label || !rule.value || isPersonalField(label)) continue;
+    const field = findFieldBySynonyms(fields, [label.toLowerCase()]);
+    if (field) {
+      wouldFill.push(`custom: ${label.slice(0, 40)}`);
+      flashPreviewField(field);
+    }
+  }
+
+  const files: string[] = [];
+  if (pkg.resumePdfBase64 && findFileInputBySynonyms(["resume", "cv", "upload resume"], { allowSoleFallback: true })) {
+    files.push("resume");
+  }
+  if (pkg.coverLetterPdfBase64 && findFileInputBySynonyms(["cover letter", "upload cover letter"])) {
+    files.push("cover letter");
+  }
+
+  const experienceAnchors = findAllFieldsBySynonyms(fields, TITLE_SYNONYMS, { onlyEmpty: false }).length;
+  const educationAnchors = findAllFieldsBySynonyms(fields, SCHOOL_SYNONYMS, { onlyEmpty: false }).length;
+
+  return {
+    wouldFill,
+    files,
+    experiencePanels: Math.min(experienceAnchors, pkg.experience.length),
+    educationPanels: Math.min(educationAnchors, pkg.education.length),
+  };
 }
 
 /** Labels of required fields on this step that are still empty — the

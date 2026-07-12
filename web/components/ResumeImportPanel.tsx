@@ -86,7 +86,8 @@ export function ResumeImportPanel({ onImported }: { onImported: (profile: Resume
       <p className="text-xs opacity-70">
         Upload your resume PDF, or paste its plain text. Claude will structure it into the fields
         below — nothing is invented, and you can review/edit everything afterward. This replaces
-        whatever is currently filled in.
+        whatever is currently filled in. No resume file handy? LinkedIn&apos;s{" "}
+        <span className="font-medium">More → Save to PDF</span> export works here too.
       </p>
 
       <div className="flex items-center gap-3">

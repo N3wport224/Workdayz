@@ -19,6 +19,8 @@ import type { MessageKind } from "@/lib/generate-message";
 import { applicationsToCsv } from "@/lib/csv";
 import { prepToMarkdown } from "@/lib/prep-markdown";
 import { safeFilenamePart } from "@/lib/safe-filename";
+import { responseSummary, statsByAtsBand, weeklyCounts } from "@/lib/analytics";
+import { followUpsToIcs } from "@/lib/ics";
 import { fetchPdfAsBase64, onExtensionDetected, sendPackageToExtension } from "@/lib/extension-bridge";
 import { APPLICATION_STATUSES, type ApplicationStatus, type AutofillPackage, type SavedApplication } from "@/lib/types";
 
@@ -146,6 +148,7 @@ export default function ApplicationsPage() {
           7d <span className="font-semibold">{countTailoredSince(active, 7)}</span> · 30d{" "}
           <span className="font-semibold">{countTailoredSince(active, 30)}</span>
         </span>
+        <StorageMeter />
         <span className="flex items-center gap-3 ml-auto">
           {active.some((a) => a.status === "rejected") ? (
             <button
@@ -174,6 +177,23 @@ export default function ApplicationsPage() {
           >
             CSV
           </button>
+          {applications.some((a) => a.followUpAt && a.status !== "rejected" && a.status !== "offer") ? (
+            <button
+              onClick={() => {
+                const blob = new Blob([followUpsToIcs(applications)], { type: "text/calendar" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "workdayz-followups.ics";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="text-blue-600 dark:text-blue-400"
+              title="Import your follow-up dates into your calendar"
+            >
+              Follow-ups .ics
+            </button>
+          ) : null}
           <button onClick={exportBackup} className="text-blue-600 dark:text-blue-400">
             Backup
           </button>
@@ -194,6 +214,10 @@ export default function ApplicationsPage() {
         </span>
       </div>
       {backupStatus ? <p className="text-xs opacity-70 -mt-4 mb-4">{backupStatus}</p> : null}
+
+      <InsightsPanel applications={applications} />
+
+      <OffersTable applications={applications} onUpdated={refresh} />
 
       <div className="flex flex-wrap gap-2 mb-4">
         <input
@@ -566,6 +590,21 @@ function ApplicationDetail({
               }}
             />
           </label>
+          <label className="text-xs opacity-70 flex items-center gap-1.5">
+            Comp
+            <input
+              key={application.id}
+              className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-1.5 py-0.5 text-xs w-36"
+              defaultValue={application.salary ?? ""}
+              placeholder="$95k + bonus…"
+              onBlur={(e) => {
+                if (e.target.value !== (application.salary ?? "")) {
+                  updateApplication(application.id, { salary: e.target.value || undefined });
+                  onUpdated();
+                }
+              }}
+            />
+          </label>
         </div>
       </div>
 
@@ -731,16 +770,31 @@ function ApplicationDetail({
         {messageText ? (
           <div className="rounded-lg border border-black/10 dark:border-white/15 p-3">
             <pre className="text-sm whitespace-pre-wrap font-sans opacity-90">{messageText}</pre>
-            <button
-              onClick={async () => {
-                await navigator.clipboard.writeText(messageText);
-                setMessageCopied(true);
-                setTimeout(() => setMessageCopied(false), 1500);
-              }}
-              className="text-xs text-blue-600 dark:text-blue-400 mt-2"
-            >
-              {messageCopied ? "Copied ✓" : "Copy message"}
-            </button>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(messageText);
+                  setMessageCopied(true);
+                  setTimeout(() => setMessageCopied(false), 1500);
+                }}
+                className="text-xs text-blue-600 dark:text-blue-400"
+              >
+                {messageCopied ? "Copied ✓" : "Copy message"}
+              </button>
+              {messageKind !== "recruiter-dm" && !messageText.startsWith("Error:") ? (
+                <a
+                  className="text-xs text-blue-600 dark:text-blue-400"
+                  href={(() => {
+                    const match = messageText.match(/^Subject: (.*)\n\n([\s\S]*)$/);
+                    const subject = match?.[1] ?? `Re: ${application.job.title}`;
+                    const bodyText = match?.[2] ?? messageText;
+                    return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+                  })()}
+                >
+                  Open in email app ↗
+                </a>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -782,6 +836,138 @@ function ApplicationDetail({
         </button>
       </div>
       {actionStatus ? <p className="text-sm opacity-80">{actionStatus}</p> : null}
+    </div>
+  );
+}
+
+/** Browser localStorage is capped (~5 MB). Shows headroom once usage is
+ * meaningful, and warns before writes start failing — archiving/deleting or
+ * exporting a backup is the fix. */
+function StorageMeter() {
+  const LIMIT = 5 * 1024 * 1024;
+  let bytes = 0;
+  try {
+    for (const key of Object.keys(window.localStorage)) {
+      if (!key.startsWith("workdayz.")) continue;
+      bytes += (key.length + (window.localStorage.getItem(key)?.length ?? 0)) * 2; // UTF-16
+    }
+  } catch {
+    return null;
+  }
+  const ratio = bytes / LIMIT;
+  if (ratio < 0.5) return null;
+  const warning = ratio >= 0.8;
+  return (
+    <span
+      className={`rounded-lg border px-3 py-1.5 ${
+        warning
+          ? "border-amber-500/50 text-amber-700 dark:text-amber-300"
+          : "border-black/10 dark:border-white/15"
+      }`}
+      title="Browser storage used by Workdayz (localStorage caps around 5 MB). Delete or archive+export old applications to free space."
+    >
+      storage <span className="font-semibold">{Math.round(ratio * 100)}%</span>
+      {warning ? " ⚠" : ""}
+    </span>
+  );
+}
+
+/** Outcome analytics: does a higher ATS score actually get more replies? */
+function InsightsPanel({ applications }: { applications: SavedApplication[] }) {
+  const summary = responseSummary(applications);
+  if (summary.submitted < 3) return null; // too little data to say anything
+  const bands = statsByAtsBand(applications);
+  const weeks = weeklyCounts(applications, 4);
+  const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : "—");
+  return (
+    <details className="rounded-lg border border-black/10 dark:border-white/15 p-4 mb-4 text-sm">
+      <summary className="cursor-pointer font-medium">
+        Insights — {summary.responses}/{summary.submitted} submitted got a response (
+        {pct(summary.responses, summary.submitted)})
+        {summary.medianDaysToResponse !== null ? ` · median ${summary.medianDaysToResponse}d to hear back` : ""}
+      </summary>
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <p className="text-xs font-medium opacity-70 mb-1">Response rate by ATS score</p>
+          <ul className="space-y-0.5 text-xs">
+            {bands.map((b) => (
+              <li key={b.band} className="flex justify-between gap-4">
+                <span className="opacity-70">ATS {b.band}</span>
+                <span>
+                  {b.responses}/{b.submitted} responded ({pct(b.responses, b.submitted)}) ·{" "}
+                  {b.interviews} interview{b.interviews === 1 ? "" : "s"}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] opacity-50 mt-1.5">
+            Small samples mislead — treat this as a hint, not a law.
+          </p>
+        </div>
+        <div>
+          <p className="text-xs font-medium opacity-70 mb-1">Tailored per week (recent first)</p>
+          <div className="flex items-end gap-1 h-12">
+            {weeks.map((count, i) => (
+              <div key={i} className="flex flex-col items-center gap-0.5">
+                <div
+                  className="w-6 bg-blue-500/60 rounded-sm"
+                  style={{ height: `${Math.min(100, count * 12)}%`, minHeight: count ? 4 : 1 }}
+                />
+                <span className="text-[10px] opacity-50">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+/** Side-by-side comp comparison once offers exist. */
+function OffersTable({
+  applications,
+  onUpdated,
+}: {
+  applications: SavedApplication[];
+  onUpdated: () => void;
+}) {
+  const offers = applications.filter((a) => a.status === "offer");
+  if (offers.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 mb-4 text-sm">
+      <p className="font-medium mb-2">🎉 Offer{offers.length === 1 ? "" : "s"}</p>
+      <div className="overflow-x-auto">
+        <table className="text-xs w-full">
+          <thead>
+            <tr className="text-left opacity-60">
+              <th className="pr-4 pb-1 font-medium">Role</th>
+              <th className="pr-4 pb-1 font-medium">Company</th>
+              <th className="pr-4 pb-1 font-medium">Comp (editable)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {offers.map((offer) => (
+              <tr key={offer.id}>
+                <td className="pr-4 py-0.5">{offer.job.title}</td>
+                <td className="pr-4 py-0.5">{offer.job.company}</td>
+                <td className="pr-4 py-0.5">
+                  <input
+                    className="rounded border border-black/15 dark:border-white/20 bg-transparent px-1.5 py-0.5 w-56"
+                    defaultValue={offer.salary ?? ""}
+                    placeholder="$95k base + 10% bonus…"
+                    onBlur={(e) => {
+                      if (e.target.value !== (offer.salary ?? "")) {
+                        updateApplication(offer.id, { salary: e.target.value || undefined });
+                        onUpdated();
+                      }
+                    }}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

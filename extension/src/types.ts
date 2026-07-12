@@ -91,6 +91,11 @@ export const STORAGE_KEYS = {
   customRules: "workdayz.customRules",
   hearAboutUs: "workdayz.hearAboutUs",
   widgetPosition: "workdayz.widgetPosition",
+  /** Record<hostname, CustomFillRule[]> — rules that apply on one tenant only. */
+  tenantRules: "workdayz.tenantRules",
+  /** Record<pageKey, { at: string; filled: number }> — which application
+   * pages have already been autofilled (capped, most recent kept). */
+  fillHistory: "workdayz.fillHistory",
 } as const;
 
 // window.postMessage protocol with the web app (see web/lib/extension-bridge.ts)

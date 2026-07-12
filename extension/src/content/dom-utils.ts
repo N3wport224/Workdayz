@@ -77,7 +77,7 @@ export function findFieldByAllTerms(
   return null;
 }
 
-function isVisible(el: Element): boolean {
+export function isVisible(el: Element): boolean {
   const rect = (el as HTMLElement).getBoundingClientRect();
   const style = window.getComputedStyle(el as HTMLElement);
   return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none";
@@ -182,10 +182,18 @@ export function findAllFieldsBySynonyms(
  * boundary of a single repeated panel (e.g. one job entry) without relying
  * on tenant-specific markup.
  */
-export function findPanelContainer(anchor: HTMLElement, fields: FillableElement[]): HTMLElement {
+export function findPanelContainer(
+  anchor: HTMLElement,
+  fields: FillableElement[],
+  /** One anchor per sibling panel: the walk stops before an ancestor that
+   * contains a SECOND anchor, so the last panel can't climb to <body> and
+   * swallow the whole form. */
+  allAnchors?: FillableElement[],
+): HTMLElement {
   let el: HTMLElement | null = anchor.parentElement;
   let best: HTMLElement = anchor.parentElement ?? anchor;
   for (let depth = 0; depth < 8 && el; depth++) {
+    if (allAnchors && allAnchors.filter((a) => el!.contains(a)).length > 1) break;
     const enclosed = fields.filter((f) => el!.contains(f)).length;
     if (enclosed >= 2) {
       best = el;
@@ -362,6 +370,18 @@ export function undoFill(): number {
   }
   fillLog = [];
   return entries.length;
+}
+
+/** Dry-run highlight: dashed amber outline, longer-lived than the fill
+ * flash, and writes nothing. */
+export function flashPreviewField(el: HTMLElement): void {
+  const original = el.style.outline;
+  el.style.outline = "2px dashed #d97706";
+  el.style.outlineOffset = "1px";
+  window.setTimeout(() => {
+    el.style.outline = original;
+    el.style.outlineOffset = "";
+  }, 4000);
 }
 
 /** Brief visual pulse so the user can see exactly what just got filled. */

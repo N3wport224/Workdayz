@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FirstRunTour } from "@/components/FirstRunTour";
 import { FollowUpNudge } from "@/components/FollowUpNudge";
 import { SetupChecklist } from "@/components/SetupChecklist";
 
@@ -11,6 +12,8 @@ export default function Home() {
         then hand off to the browser extension to autofill the application for a final review
         before you submit.
       </p>
+
+      <FirstRunTour />
 
       <SetupChecklist />
 

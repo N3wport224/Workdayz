@@ -148,6 +148,49 @@ describe("computeAtsScore", () => {
     expect(result.score).toBe(100);
   });
 
+  it("weights title keywords double when job context is provided", () => {
+    // "Rust" (missing) is in the title → weight 2; "TypeScript" (matched) is
+    // body-only → weight 1. Coverage = 1/3 ≈ 33, not the unweighted 50.
+    const result = computeAtsScore(
+      ["TypeScript", "Rust"],
+      tailoredResume(),
+      profile(),
+      { title: "Senior Rust Engineer", description: "TypeScript mentioned once." },
+    );
+    expect(result.score).toBeLessThanOrEqual(35);
+  });
+
+  it("weights keywords repeated 3+ times in the description at 1.5x", () => {
+    const result = computeAtsScore(
+      ["GraphQL", "TypeScript"],
+      tailoredResume(),
+      profile(),
+      { title: "Engineer", description: "GraphQL GraphQL GraphQL and TypeScript." },
+    );
+    // matched TypeScript weight 1, missing GraphQL weight 1.5 → 1/2.5 = 40
+    expect(result.score).toBeLessThanOrEqual(42);
+    expect(result.missingKeywords).toEqual(["GraphQL"]);
+  });
+
+  it("matches known aliases on word boundaries (k8s counts as Kubernetes)", () => {
+    const result = computeAtsScore(
+      ["Kubernetes"],
+      tailoredResume({ summary: "Runs production workloads on k8s clusters at scale every day for years now.", skills: ["a", "b", "c", "d", "e"] }),
+      profile(),
+    );
+    expect(result.matchedKeywords).toEqual(["Kubernetes"]);
+  });
+
+  it("does not let short aliases match inside other words", () => {
+    const result = computeAtsScore(
+      ["Machine Learning"],
+      tailoredResume({ summary: "Writes semantic html markup with careful attention to detail and standards.", skills: [], experience: [] }),
+      profile(),
+    );
+    // "ml" must not match inside "html"
+    expect(result.missingKeywords).toEqual(["Machine Learning"]);
+  });
+
   it("verifies skills evidenced only by a job title", () => {
     const sourceProfile = profile({
       experience: [

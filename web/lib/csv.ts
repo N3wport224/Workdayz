@@ -22,6 +22,7 @@ export function applicationsToCsv(applications: SavedApplication[]): string {
     "Tailored",
     "Last updated",
     "Follow up by",
+    "Comp",
     "Source URL",
     "Notes",
   ];
@@ -35,6 +36,7 @@ export function applicationsToCsv(applications: SavedApplication[]): string {
     a.createdAt,
     a.updatedAt,
     a.followUpAt ?? "",
+    a.salary ?? "",
     a.job.sourceUrl ?? "",
     a.notes ?? "",
   ]);

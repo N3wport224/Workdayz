@@ -152,6 +152,8 @@ export interface SavedApplication {
   /** Archived entries are hidden from the default tracker views but kept
    * for the record (and still appear in CSV/backup exports). */
   archived?: boolean;
+  /** Free-text comp info ("$95k base + 10% bonus"); compared across offers. */
+  salary?: string;
 }
 
 // The package handed off to the browser extension for autofilling Workday.

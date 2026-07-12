@@ -23,6 +23,8 @@ import {
 import type { AutofillPackage, JobPosting, ResumeProfile, TailorResult, UsageInfo } from "@/lib/types";
 import { formatUsd } from "@/lib/pricing";
 import { recordUsage } from "@/lib/usage-log";
+import { resumeToText } from "@/lib/resume-text";
+import type { ResumeTemplate } from "@/lib/pdf/ResumeDocument";
 
 const inputClass =
   "w-full rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
@@ -74,6 +76,23 @@ export default function ApplyPage() {
   const [letterDrafts, setLetterDrafts] = useState<string[]>([]);
   const [costNote, setCostNote] = useState<string | null>(null);
   const [fetchingUrl, setFetchingUrl] = useState(false);
+  // Per-bullet edits keyed by experience id — the working copy every export
+  // reads. Revert/rewrite operate on this, never on the model's result.
+  const [bulletEdits, setBulletEdits] = useState<Record<string, string[]>>({});
+  const [rewritingKey, setRewritingKey] = useState<string | null>(null);
+  // A/B variants: each full tailor result is kept; tabs switch between them.
+  const [variants, setVariants] = useState<TailorResult[]>([]);
+  const [activeVariant, setActiveVariant] = useState(0);
+  const [variantLoading, setVariantLoading] = useState(false);
+  const [template, setTemplate] = useState<ResumeTemplate>("classic");
+  const [textCopied, setTextCopied] = useState(false);
+  // Batch queue: one row per pasted URL.
+  const [batchUrls, setBatchUrls] = useState("");
+  const [batchRows, setBatchRows] = useState<
+    { url: string; status: string; title?: string; ats?: number; error?: string }[]
+  >([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchAbortRef = useRef(false);
   const applicationIdRef = useRef<string>(crypto.randomUUID());
   const lastJobKeyRef = useRef<string>("");
   const draftLoadedRef = useRef(false);
@@ -163,11 +182,9 @@ export default function ApplyPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Tailoring failed.");
       const tailored = data as TailorResult;
-      setResult(tailored);
-      setCoverLetter(tailored.coverLetter);
-      setSummaryText(tailored.tailoredResume.summary);
-      setSkillsText(tailored.tailoredResume.skills.join(", "));
-      setLetterDrafts([]);
+      setVariants([tailored]);
+      setActiveVariant(0);
+      adoptResult(tailored);
       noteCost(tailored.usage);
       persistSnapshot(tailored, tailored.coverLetter, tailored.tailoredResume.summary, tailored.tailoredResume.skills);
       setSaved(true);
@@ -210,6 +227,171 @@ export default function ApplyPage() {
     } finally {
       setLetterLoading(false);
     }
+  }
+
+  /** Makes a tailor result the active working copy (fresh tailor or a
+   * variant-tab switch): editable fields and bullet edits reset to it. */
+  function adoptResult(tailored: TailorResult) {
+    setResult(tailored);
+    setCoverLetter(tailored.coverLetter);
+    setSummaryText(tailored.tailoredResume.summary);
+    setSkillsText(tailored.tailoredResume.skills.join(", "));
+    setLetterDrafts([]);
+    setBulletEdits(
+      Object.fromEntries(tailored.tailoredResume.experience.map((e) => [e.id, [...e.bullets]])),
+    );
+  }
+
+  /** Generates an alternate take on the same job (different emphasis) and
+   * switches to it. Both variants stay available as tabs. */
+  async function generateVariant() {
+    if (!profile || variants.length === 0) return;
+    setVariantLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tailor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile,
+          job,
+          options: {
+            tone,
+            length,
+            extraInstructions:
+              `${extraInstructions}\nProduce a noticeably different variant: lead with a different subset of the candidate's real strengths and a different summary angle than an earlier draft would.`.trim(),
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Variant generation failed.");
+      const variant = data as TailorResult;
+      noteCost(variant.usage);
+      setVariants((prev) => {
+        setActiveVariant(prev.length);
+        return [...prev, variant];
+      });
+      adoptResult(variant);
+      persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setVariantLoading(false);
+    }
+  }
+
+  function switchVariant(index: number) {
+    const variant = variants[index];
+    if (!variant) return;
+    setActiveVariant(index);
+    adoptResult(variant);
+    persistSnapshot(variant, variant.coverLetter, variant.tailoredResume.summary, variant.tailoredResume.skills);
+  }
+
+  /** AI-rewrites one bullet, bounded by the role's ORIGINAL bullets. */
+  async function rewriteBulletAt(expId: string, index: number) {
+    if (!profile) return;
+    const source = profile.experience.find((e) => e.id === expId);
+    const current = bulletEdits[expId]?.[index];
+    if (!source || current === undefined) return;
+    const key = `${expId}:${index}`;
+    setRewritingKey(key);
+    try {
+      const res = await fetch("/api/rewrite-bullet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentBullet: current,
+          sourceBullets: source.bullets,
+          roleTitle: source.title,
+          jobTitle: job.title,
+          jobDescription: job.description,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Bullet rewrite failed.");
+      noteCost(data.usage);
+      setBulletEdits((prev) => {
+        const next = { ...prev, [expId]: [...(prev[expId] ?? [])] };
+        next[expId][index] = data.bullet;
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bullet rewrite failed.");
+    } finally {
+      setRewritingKey(null);
+    }
+  }
+
+  /** Fetch + tailor every URL in the batch box, saving each to the tracker. */
+  async function runBatch() {
+    if (!profile) return;
+    const urls = batchUrls
+      .split("\n")
+      .map((u) => u.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+    if (urls.length === 0) return;
+    batchAbortRef.current = false;
+    setBatchRunning(true);
+    setBatchRows(urls.map((url) => ({ url, status: "queued" })));
+    const setRow = (i: number, patch: Partial<(typeof batchRows)[number]>) =>
+      setBatchRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+    for (let i = 0; i < urls.length; i++) {
+      if (batchAbortRef.current) {
+        setRow(i, { status: "skipped (stopped)" });
+        continue;
+      }
+      try {
+        setRow(i, { status: "fetching posting…" });
+        const fetchRes = await fetch("/api/fetch-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: urls[i] }),
+        });
+        const fetchData = await fetchRes.json();
+        if (!fetchRes.ok) throw new Error(fetchData.error || "Fetch failed.");
+        const batchJob = fetchData.job as JobPosting;
+
+        setRow(i, { status: "tailoring…", title: batchJob.title });
+        const tailorRes = await fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile, job: batchJob, options: { tone, length } }),
+        });
+        const tailorData = await tailorRes.json();
+        if (!tailorRes.ok) throw new Error(tailorData.error || "Tailoring failed.");
+        const tailored = tailorData as TailorResult;
+        noteCost(tailored.usage);
+
+        const now = new Date().toISOString();
+        upsertApplication({
+          id: crypto.randomUUID(),
+          status: "draft",
+          createdAt: now,
+          updatedAt: now,
+          job: batchJob,
+          contact: profile.contact,
+          summary: tailored.tailoredResume.summary,
+          skills: tailored.tailoredResume.skills,
+          experience: profile.experience.map((e) => {
+            const t = tailored.tailoredResume.experience.find((x) => x.id === e.id);
+            return { ...e, bullets: t?.bullets ?? e.bullets };
+          }),
+          education: profile.education,
+          certifications: profile.certifications,
+          projects: profile.projects,
+          coverLetterText: tailored.coverLetter,
+          atsScore: tailored.atsScore,
+          fitAnalysis: tailored.fitAnalysis,
+        });
+        setRow(i, { status: "done ✓", ats: tailored.atsScore.score });
+      } catch (err) {
+        setRow(i, { status: "failed", error: err instanceof Error ? err.message : "failed" });
+      }
+    }
+    setBatchRunning(false);
   }
 
   /** Records the run's estimated AI cost + the lifetime total. */
@@ -271,7 +453,7 @@ export default function ApplyPage() {
       contact: profile.contact,
       summary: summaryArg ?? summaryText,
       skills: skillsArg ?? parseSkills(skillsText),
-      experience: mergedExperience(profile, tailored),
+      experience: mergedExperience(profile, tailored, bulletEdits),
       education: profile.education,
       certifications: profile.certifications,
       projects: profile.projects,
@@ -286,7 +468,7 @@ export default function ApplyPage() {
 
   async function downloadResumePdf() {
     if (!profile || !result) return;
-    const merged = mergedExperience(profile, result);
+    const merged = mergedExperience(profile, result, bulletEdits);
     const { base64, fileName } = await fetchPdfAsBase64("/api/resume-pdf", {
       contact: profile.contact,
       summary: summaryText,
@@ -296,8 +478,45 @@ export default function ApplyPage() {
       certifications: profile.certifications,
       projects: profile.projects,
       companyName: job.company,
+      template,
     });
     triggerDownload(base64, fileName);
+  }
+
+  async function downloadResumeDocx() {
+    if (!profile || !result) return;
+    const merged = mergedExperience(profile, result, bulletEdits);
+    const { base64, fileName } = await fetchPdfAsBase64("/api/resume-docx", {
+      contact: profile.contact,
+      summary: summaryText,
+      skills: parseSkills(skillsText),
+      experience: merged,
+      education: profile.education,
+      certifications: profile.certifications,
+      projects: profile.projects,
+      companyName: job.company,
+    });
+    triggerDownload(base64, fileName, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  }
+
+  async function copyPlainText() {
+    if (!profile || !result) return;
+    const text = resumeToText({
+      contact: profile.contact,
+      summary: summaryText,
+      skills: parseSkills(skillsText),
+      experience: mergedExperience(profile, result, bulletEdits),
+      education: profile.education,
+      certifications: profile.certifications,
+      projects: profile.projects,
+    });
+    try {
+      await navigator.clipboard.writeText(text);
+      setTextCopied(true);
+      setTimeout(() => setTextCopied(false), 1500);
+    } catch {
+      /* clipboard blocked */
+    }
   }
 
   async function downloadCoverLetterPdf() {
@@ -318,7 +537,7 @@ export default function ApplyPage() {
     persistSnapshot(result, coverLetter);
     setHandoffStatus("Generating PDFs...");
     try {
-      const merged = mergedExperience(profile, result);
+      const merged = mergedExperience(profile, result, bulletEdits);
       const [resumePdf, coverPdf] = await Promise.all([
         fetchPdfAsBase64("/api/resume-pdf", {
           contact: profile.contact,
@@ -329,6 +548,7 @@ export default function ApplyPage() {
           certifications: profile.certifications,
           projects: profile.projects,
           companyName: job.company,
+          template,
         }),
         fetchPdfAsBase64("/api/cover-letter-pdf", {
           contact: profile.contact,
@@ -395,6 +615,66 @@ export default function ApplyPage() {
           )}
         </p>
       </div>
+
+      <details className="rounded-lg border border-black/10 dark:border-white/15 p-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          Batch tailor from URLs (up to 10)
+        </summary>
+        <p className="text-xs opacity-60 mt-2 mb-2">
+          One posting URL per line. Each is fetched, tailored with the tone/length set below, and
+          saved to your tracker as a draft. Rough cost: ~{formatUsd(0.05)}–{formatUsd(0.1)} per job.
+        </p>
+        <textarea
+          className={inputClass}
+          rows={3}
+          value={batchUrls}
+          onChange={(e) => setBatchUrls(e.target.value)}
+          placeholder={"https://acme.wd5.myworkdayjobs.com/...\nhttps://globex.wd1.myworkdayjobs.com/..."}
+          disabled={batchRunning}
+        />
+        <div className="flex items-center gap-3 mt-2">
+          <button
+            type="button"
+            onClick={runBatch}
+            disabled={batchRunning || !batchUrls.trim() || !profile}
+            className="rounded-md bg-blue-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+          >
+            {batchRunning ? "Running…" : "Fetch & tailor all"}
+          </button>
+          {batchRunning ? (
+            <button
+              type="button"
+              onClick={() => {
+                batchAbortRef.current = true;
+              }}
+              className="text-xs text-rose-600 dark:text-rose-400"
+            >
+              Stop after current
+            </button>
+          ) : null}
+        </div>
+        {batchRows.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-xs">
+            {batchRows.map((row, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span className="opacity-60 truncate max-w-60">{row.title || row.url}</span>
+                <span className={row.status === "failed" ? "text-rose-600 dark:text-rose-400" : "opacity-80"}>
+                  {row.status}
+                  {row.ats !== undefined ? ` · ATS ${row.ats}` : ""}
+                  {row.error ? ` — ${row.error}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {!batchRunning && batchRows.some((r) => r.status === "done ✓") ? (
+          <p className="text-xs mt-2">
+            <Link href="/applications" className="text-blue-600 dark:text-blue-400">
+              Review the drafts in your tracker →
+            </Link>
+          </p>
+        ) : null}
+      </details>
 
       <form onSubmit={handleTailor} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -515,12 +795,54 @@ export default function ApplyPage() {
 
       {result ? (
         <div className="space-y-6">
+          <div className="flex items-center gap-2">
+            {variants.map((v, i) => (
+              <button
+                key={i}
+                onClick={() => switchVariant(i)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium border ${
+                  i === activeVariant
+                    ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                    : "border-black/15 dark:border-white/20 opacity-70"
+                }`}
+              >
+                Variant {String.fromCharCode(65 + i)} · ATS {v.atsScore.score}
+              </button>
+            ))}
+            {variants.length > 0 && variants.length < 3 ? (
+              <button
+                onClick={generateVariant}
+                disabled={variantLoading || loading}
+                className="rounded-md border border-dashed border-black/20 dark:border-white/25 px-3 py-1.5 text-xs opacity-70 hover:opacity-100 disabled:opacity-40"
+                title="Same job, different emphasis — compare and pick"
+              >
+                {variantLoading ? "Generating…" : "+ Variant (different emphasis)"}
+              </button>
+            ) : null}
+          </div>
+
           <AtsScoreMeter
             ats={result.atsScore}
             onMissingKeywordClick={(k) =>
               setExtraInstructions((prev) => (prev.includes(k) ? prev : prev ? `${prev}; emphasize "${k}"` : `Emphasize "${k}"`))
             }
           />
+
+          <details className="rounded-lg border border-black/10 dark:border-white/15 p-4">
+            <summary className="cursor-pointer text-sm font-medium">
+              Job description with keyword highlights
+            </summary>
+            <p className="text-xs opacity-60 mt-2 mb-2">
+              <mark className="bg-emerald-500/25 rounded px-0.5">green</mark> = in your tailored
+              resume · <mark className="bg-amber-500/30 rounded px-0.5">amber</mark> = the posting
+              asks for it, your resume doesn&apos;t say it
+            </p>
+            <HighlightedJd
+              description={job.description}
+              matched={result.atsScore.matchedKeywords}
+              missing={result.atsScore.missingKeywords}
+            />
+          </details>
 
           {result.fitAnalysis.verdict ? (
             <div className="rounded-lg border border-black/10 dark:border-white/15 p-4">
@@ -569,7 +891,7 @@ export default function ApplyPage() {
                 est. {estimateResumePages({
                   summary: summaryText,
                   skills: parseSkills(skillsText),
-                  experience: mergedExperience(profile!, result),
+                  experience: mergedExperience(profile!, result, bulletEdits),
                   education: profile?.education ?? [],
                   certifications: profile?.certifications ?? [],
                 })}{" "}
@@ -599,16 +921,66 @@ export default function ApplyPage() {
               </div>
               {result.tailoredResume.experience.map((exp) => {
                 const source = profile?.experience.find((e) => e.id === exp.id);
+                const bullets = bulletEdits[exp.id] ?? exp.bullets;
                 return (
                   <div key={exp.id}>
-                    <p className="font-medium">
+                    <p className="font-medium mb-1">
                       {source?.title} — {source?.company}
                     </p>
-                    <ul className="list-disc list-inside opacity-80">
-                      {exp.bullets.map((b, i) => (
-                        <li key={i}>{b}</li>
-                      ))}
-                    </ul>
+                    <div className="space-y-1.5">
+                      {bullets.map((bullet, i) => {
+                        const original = source?.bullets[i];
+                        const changed = original !== undefined && original !== bullet;
+                        const key = `${exp.id}:${i}`;
+                        return (
+                          <div key={i} className="flex items-start gap-1.5 group">
+                            <span
+                              className={`mt-2 w-1.5 h-1.5 rounded-full shrink-0 ${changed ? "bg-blue-500" : "bg-black/20 dark:bg-white/25"}`}
+                              title={changed ? "Rewritten vs. your original" : "Unchanged from your original"}
+                            />
+                            <textarea
+                              className={`${inputClass} !py-1 text-xs`}
+                              rows={2}
+                              value={bullet}
+                              onChange={(e) =>
+                                setBulletEdits((prev) => {
+                                  const next = { ...prev, [exp.id]: [...(prev[exp.id] ?? exp.bullets)] };
+                                  next[exp.id][i] = e.target.value;
+                                  return next;
+                                })
+                              }
+                            />
+                            <div className="flex flex-col gap-0.5 shrink-0">
+                              {changed ? (
+                                <button
+                                  type="button"
+                                  className="text-[11px] opacity-50 hover:opacity-100"
+                                  title={`Revert to your original: "${original}"`}
+                                  onClick={() =>
+                                    setBulletEdits((prev) => {
+                                      const next = { ...prev, [exp.id]: [...(prev[exp.id] ?? exp.bullets)] };
+                                      next[exp.id][i] = original!;
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  ↺ original
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="text-[11px] text-blue-600 dark:text-blue-400 disabled:opacity-40"
+                                disabled={rewritingKey !== null}
+                                title="AI-rewrite this bullet (facts stay bounded by your original bullets)"
+                                onClick={() => rewriteBulletAt(exp.id, i)}
+                              >
+                                {rewritingKey === key ? "…" : "✨ rewrite"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                     {source ? (
                       <details className="mt-1">
                         <summary className="text-xs opacity-50 cursor-pointer">
@@ -675,18 +1047,43 @@ export default function ApplyPage() {
             ) : null}
           </section>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs opacity-70 flex items-center gap-1.5">
+              Layout
+              <select
+                className="rounded-md border border-black/15 dark:border-white/20 bg-transparent px-2 py-1 text-xs"
+                value={template}
+                onChange={(e) => setTemplate(e.target.value as ResumeTemplate)}
+              >
+                <option value="classic">Classic</option>
+                <option value="compact">Compact (fits more per page)</option>
+              </select>
+            </label>
             <button
               onClick={downloadResumePdf}
               className="rounded-md border border-black/15 dark:border-white/20 px-4 py-2 text-sm font-medium"
             >
-              Download resume PDF
+              Resume PDF
+            </button>
+            <button
+              onClick={downloadResumeDocx}
+              className="rounded-md border border-black/15 dark:border-white/20 px-4 py-2 text-sm font-medium"
+              title="Word format — some ATSs and recruiters prefer .docx"
+            >
+              Resume DOCX
+            </button>
+            <button
+              onClick={copyPlainText}
+              className="rounded-md border border-black/15 dark:border-white/20 px-4 py-2 text-sm font-medium"
+              title="For portals that want raw text pasted into a box"
+            >
+              {textCopied ? "Copied ✓" : "Copy as text"}
             </button>
             <button
               onClick={downloadCoverLetterPdf}
               className="rounded-md border border-black/15 dark:border-white/20 px-4 py-2 text-sm font-medium"
             >
-              Download cover letter PDF
+              Cover letter PDF
             </button>
             <button
               onClick={sendToExtension}
@@ -743,6 +1140,53 @@ function ResultSkeleton() {
   );
 }
 
+/** The pasted JD with ATS keywords marked: green = your tailored resume says
+ * it, amber = the posting asks and your resume is silent. Built as React
+ * nodes (never innerHTML) — the JD is untrusted text. */
+function HighlightedJd({
+  description,
+  matched,
+  missing,
+}: {
+  description: string;
+  matched: string[];
+  missing: string[];
+}) {
+  const text = description.slice(0, 20_000);
+  const terms = [
+    ...matched.map((k) => ({ k, missing: false })),
+    ...missing.map((k) => ({ k, missing: true })),
+  ]
+    .filter((t) => t.k.trim().length > 1)
+    .sort((a, b) => b.k.length - a.k.length);
+  if (terms.length === 0) {
+    return <pre className="text-xs whitespace-pre-wrap font-sans opacity-80">{text}</pre>;
+  }
+  const byLower = new Map(terms.map((t) => [t.k.toLowerCase(), t.missing]));
+  const pattern = new RegExp(
+    `(${terms.map((t) => t.k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "gi",
+  );
+  const parts = text.split(pattern);
+  return (
+    <pre className="text-xs whitespace-pre-wrap font-sans opacity-80 max-h-80 overflow-y-auto">
+      {parts.map((part, i) => {
+        const isMissing = byLower.get(part.toLowerCase());
+        if (isMissing === undefined) return part;
+        return (
+          <mark
+            key={i}
+            className={`rounded px-0.5 ${isMissing ? "bg-amber-500/30" : "bg-emerald-500/25"}`}
+          >
+            {part}
+          </mark>
+        );
+      })}
+      {description.length > text.length ? "\n… (truncated for display)" : ""}
+    </pre>
+  );
+}
+
 function parseSkills(text: string): string[] {
   return text
     .split(",")
@@ -750,18 +1194,22 @@ function parseSkills(text: string): string[] {
     .filter(Boolean);
 }
 
-function mergedExperience(profile: ResumeProfile, result: TailorResult) {
+function mergedExperience(
+  profile: ResumeProfile,
+  result: TailorResult,
+  edits?: Record<string, string[]>,
+) {
   return profile.experience.map((e) => {
     const tailored = result.tailoredResume.experience.find((t) => t.id === e.id);
-    return { ...e, bullets: tailored?.bullets ?? e.bullets };
+    return { ...e, bullets: edits?.[e.id] ?? tailored?.bullets ?? e.bullets };
   });
 }
 
-function triggerDownload(base64: string, fileName: string) {
+function triggerDownload(base64: string, fileName: string, mime = "application/pdf") {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/pdf" });
+  const blob = new Blob([new Uint8Array(byteNumbers)], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

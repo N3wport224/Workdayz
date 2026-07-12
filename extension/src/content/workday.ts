@@ -1,6 +1,6 @@
 import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type CustomFillRule, type JobPosting, type QuestionAnswer, type RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
-import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, runAutofill } from "./autofill";
+import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, previewAutofill, runAutofill } from "./autofill";
 import { undoFill } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
 
@@ -72,14 +72,22 @@ async function getFillSource(): Promise<{ pkg: AutofillPackage; tailored: boolea
   return null;
 }
 
-/** User-defined answers from the popup, plus the dedicated
- * "How did you hear about us?" default when set. */
+/** User-defined answers from the popup — global rules, plus rules saved for
+ * THIS tenant's hostname, plus the "How did you hear about us?" default.
+ * Tenant rules come last so they win when labels overlap. */
 async function getCustomRules(): Promise<CustomFillRule[]> {
   try {
-    const data = await chrome.storage.local.get([STORAGE_KEYS.customRules, STORAGE_KEYS.hearAboutUs]);
+    const data = await chrome.storage.local.get([
+      STORAGE_KEYS.customRules,
+      STORAGE_KEYS.hearAboutUs,
+      STORAGE_KEYS.tenantRules,
+    ]);
     const rules = Array.isArray(data[STORAGE_KEYS.customRules])
-      ? (data[STORAGE_KEYS.customRules] as CustomFillRule[])
+      ? [...(data[STORAGE_KEYS.customRules] as CustomFillRule[])]
       : [];
+    const tenants = (data[STORAGE_KEYS.tenantRules] ?? {}) as Record<string, CustomFillRule[]>;
+    const forThisHost = tenants[location.hostname];
+    if (Array.isArray(forThisHost)) rules.push(...forThisHost);
     const hearAboutUs = data[STORAGE_KEYS.hearAboutUs] as string | undefined;
     if (hearAboutUs?.trim()) {
       rules.push({ label: "how did you hear", value: hearAboutUs.trim() });
@@ -87,6 +95,35 @@ async function getCustomRules(): Promise<CustomFillRule[]> {
     return rules;
   } catch {
     return []; // orphaned script
+  }
+}
+
+// --- step memory: remember which application pages were already filled ---
+
+function pageKey(): string {
+  return `${location.hostname}${location.pathname}`;
+}
+
+async function recordFillForPage(filledCount: number): Promise<void> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.fillHistory);
+    const history = (data[STORAGE_KEYS.fillHistory] ?? {}) as Record<string, { at: string; filled: number }>;
+    history[pageKey()] = { at: new Date().toISOString(), filled: filledCount };
+    // Cap the map so it can't grow forever: keep the 50 most recent.
+    const entries = Object.entries(history).sort((a, b) => b[1].at.localeCompare(a[1].at)).slice(0, 50);
+    await chrome.storage.local.set({ [STORAGE_KEYS.fillHistory]: Object.fromEntries(entries) });
+  } catch {
+    /* orphaned script */
+  }
+}
+
+async function previousFillForPage(): Promise<{ at: string; filled: number } | null> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.fillHistory);
+    const history = (data[STORAGE_KEYS.fillHistory] ?? {}) as Record<string, { at: string; filled: number }>;
+    return history[pageKey()] ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -131,6 +168,7 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
   widget.setStatus(`${parts.join(". ")}. ${suffix}${staleWarning(source.pkg, source.tailored)}`);
   // Toolbar badge mirrors the fill count for at-a-glance confirmation.
   sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
+  void recordFillForPage(result.filled.length);
   return result;
 }
 
@@ -138,14 +176,39 @@ function initApplicationFormWidget() {
   const widget = mountWidget("Workdayz");
   widget.setStatus("Checking for a tailored application...");
 
-  getFillSource().then((source) => {
+  Promise.all([getFillSource(), previousFillForPage()]).then(([source, previous]) => {
+    const alreadyFilled = previous
+      ? ` You already filled this page (${previous.filled} field group(s), ${new Date(previous.at).toLocaleString()}).`
+      : "";
     widget.setStatus(
       source === null
         ? "Nothing to fill from yet — save your resume profile in the Workdayz web app first."
         : source.tailored
-          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}`
-          : "Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.",
+          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}`
+          : `Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}`,
     );
+  });
+
+  addButton(widget.root, "Preview fill (writes nothing)", async () => {
+    try {
+      const source = await getFillSource();
+      if (!source) {
+        widget.setStatus("Nothing to preview — save your resume profile in the Workdayz web app first.");
+        return;
+      }
+      const preview = previewAutofill(source.pkg, await getCustomRules());
+      const parts = [
+        `Would fill ${preview.wouldFill.length} text field(s) (highlighted with a dashed outline)`,
+      ];
+      if (preview.files.length) parts.push(`attach ${preview.files.join(" & ")}`);
+      if (preview.experiencePanels) parts.push(`fill ${preview.experiencePanels} experience panel(s)`);
+      if (preview.educationPanels) parts.push(`fill ${preview.educationPanels} education panel(s)`);
+      widget.setStatus(
+        `PREVIEW — ${parts.join(", ")}. Dropdowns and split dates resolve during the real fill. Nothing was changed.`,
+      );
+    } catch {
+      widget.setStatus("The extension was updated — reload this page and try again.");
+    }
   });
 
   const runBtn = addButton(widget.root, "Autofill this step", async () => {
@@ -263,6 +326,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       }
       const result = await runAutofill(source.pkg, await getCustomRules());
       sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
+      void recordFillForPage(result.filled.length);
       sendResponse(result);
     });
     return true;

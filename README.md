@@ -132,6 +132,47 @@ track its status over time.
   on the home page.
 - **Interview prep export** — download any application's prep as Markdown
   for your notes app.
+- **Bullet-level control** — every tailored bullet is editable, shows a
+  changed-vs-original indicator, reverts to your original with one click,
+  and can be AI-rewritten individually (bounded by your original facts).
+- **A/B variants** — generate up to three takes on the same job with
+  different emphasis and switch between them as tabs.
+- **JD keyword highlighting** — read the posting with matched (green) and
+  missing (amber) ATS keywords marked inline.
+- **Smarter ATS scoring** — keywords in the job title weigh double, ones
+  repeated 3+ times weigh 1.5×, and known aliases match (k8s ↔ Kubernetes,
+  ML ↔ machine learning) with word-boundary safety.
+- **More export formats** — DOCX resume (many ATSs prefer Word), plain-text
+  copy for paste-into-a-box portals, and a Compact PDF layout alongside
+  Classic.
+- **Batch tailoring** — paste up to 10 posting URLs; each is fetched,
+  tailored, and saved to the tracker as a draft while you watch progress.
+- **Outcome insights** — response rate by ATS band, median days to hear
+  back, and weekly volume, computed from your own tracker history.
+- **Offers & comp** — a comp field per application and a comparison table
+  once offers arrive; comp is included in the CSV export.
+- **Calendar & email handoff** — follow-ups export as an .ics file;
+  drafted emails open pre-filled via mailto.
+- **Whole-life backup** — one file with every profile, application, and
+  setting, optionally passphrase-encrypted (AES-256-GCM); storage-headroom
+  meter warns before the browser cap bites.
+- **LinkedIn import** — a LinkedIn "Save to PDF" profile export imports
+  like any resume.
+- **First-run tour** — a three-step guided start for new users.
+- **Autofill: grows sections itself** — clicks the section's "Add Another"
+  button (strict label allowlist) and fills each new panel as Workday
+  renders it, so multi-role histories fill without manual panel-adding.
+- **Autofill: dry-run preview** — see exactly which fields WOULD be filled
+  (dashed highlights) without writing anything.
+- **Per-tenant rules & sharing** — custom answers can be scoped to one
+  career site's hostname, and all rules export/import as JSON.
+- **Page memory** — the widget tells you when you've already autofilled the
+  page you're looking at.
+- **Experimental Firefox build** — `npm run build:firefox` produces a
+  loadable Firefox MV3 variant.
+- **Prompt caching** — repeat tailoring runs (refine, variants, new letter
+  drafts) reuse cached prompt tokens at a fraction of the price; the cost
+  estimator prices cache hits correctly.
 
 ## Safety notes
 

@@ -86,13 +86,24 @@ Hard rules:
   }
 
   sections.push(`Tailor the resume content and write the cover letter for this job. Call the ${TOOL_NAME} tool with your result.`);
-  const userMessage = sections.join("\n\n---\n\n");
 
+  // Cache breakpoint after the profile block (sections[0]): refine/regenerate
+  // runs repeat the system prompt + resume verbatim, so those tokens come
+  // back at the cache-read rate instead of full price.
+  const [profileSection, ...restSections] = sections;
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 4096,
-    system,
-    messages: [{ role: "user", content: userMessage }],
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: profileSection, cache_control: { type: "ephemeral" } },
+          { type: "text", text: restSections.join("\n\n---\n\n") },
+        ],
+      },
+    ],
     tools: [
       {
         name: TOOL_NAME,
@@ -175,7 +186,10 @@ Hard rules:
       .map((e) => ({ id: e.id, bullets: strArr(e.bullets) })),
   };
 
-  const atsScore = computeAtsScore(strArr(input.keywords), tailoredResume, profile);
+  const atsScore = computeAtsScore(strArr(input.keywords), tailoredResume, profile, {
+    title: job.title,
+    description: job.description,
+  });
 
   const rawFit = (input.fitAnalysis ?? {}) as Record<string, unknown>;
   const fitAnalysis = {

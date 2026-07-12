@@ -1,34 +1,41 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { ContactInfo, EducationEntry, ProjectEntry, WorkExperience } from "@/lib/types";
 
-// ATS-safe layout: single column, standard built-in font, plain text only —
+// ATS-safe layouts: single column, standard built-in font, plain text only —
 // no tables, images, text boxes, or multi-column sections that resume
-// parsers commonly choke on.
-const styles = StyleSheet.create({
-  page: {
-    fontFamily: "Helvetica",
-    fontSize: 10.5,
-    lineHeight: 1.35,
-    padding: 36,
-    color: "#111111",
-  },
-  name: { fontSize: 18, fontFamily: "Helvetica-Bold", marginBottom: 2 },
-  contactLine: { fontSize: 9.5, color: "#333333", marginBottom: 10 },
-  sectionHeading: {
-    fontSize: 11,
-    fontFamily: "Helvetica-Bold",
-    textTransform: "uppercase",
-    borderBottom: "1 solid #111111",
-    marginTop: 12,
-    marginBottom: 6,
-    paddingBottom: 2,
-  },
-  paragraph: { marginBottom: 4 },
-  entryHeader: { fontFamily: "Helvetica-Bold", fontSize: 10.5 },
-  entrySubheader: { fontSize: 9.5, color: "#333333", marginBottom: 3 },
-  bullet: { marginBottom: 2, paddingLeft: 10 },
-  entryBlock: { marginBottom: 8 },
-});
+// parsers commonly choke on. Templates only vary type size and spacing;
+// "compact" squeezes a long history onto fewer pages.
+export const RESUME_TEMPLATES = ["classic", "compact"] as const;
+export type ResumeTemplate = (typeof RESUME_TEMPLATES)[number];
+
+function buildStyles(template: ResumeTemplate) {
+  const compact = template === "compact";
+  return StyleSheet.create({
+    page: {
+      fontFamily: "Helvetica",
+      fontSize: compact ? 9.5 : 10.5,
+      lineHeight: compact ? 1.25 : 1.35,
+      padding: compact ? 28 : 36,
+      color: "#111111",
+    },
+    name: { fontSize: compact ? 16 : 18, fontFamily: "Helvetica-Bold", marginBottom: 2 },
+    contactLine: { fontSize: compact ? 8.5 : 9.5, color: "#333333", marginBottom: compact ? 7 : 10 },
+    sectionHeading: {
+      fontSize: compact ? 10 : 11,
+      fontFamily: "Helvetica-Bold",
+      textTransform: "uppercase" as const,
+      borderBottom: "1 solid #111111",
+      marginTop: compact ? 8 : 12,
+      marginBottom: compact ? 4 : 6,
+      paddingBottom: 2,
+    },
+    paragraph: { marginBottom: compact ? 3 : 4 },
+    entryHeader: { fontFamily: "Helvetica-Bold", fontSize: compact ? 9.5 : 10.5 },
+    entrySubheader: { fontSize: compact ? 8.5 : 9.5, color: "#333333", marginBottom: compact ? 2 : 3 },
+    bullet: { marginBottom: compact ? 1 : 2, paddingLeft: 10 },
+    entryBlock: { marginBottom: compact ? 5 : 8 },
+  });
+}
 
 export interface ResumePdfProps {
   contact: ContactInfo;
@@ -38,6 +45,7 @@ export interface ResumePdfProps {
   education: EducationEntry[];
   certifications: string[];
   projects?: ProjectEntry[];
+  template?: ResumeTemplate;
 }
 
 export function ResumeDocument({
@@ -48,7 +56,9 @@ export function ResumeDocument({
   education,
   certifications,
   projects,
+  template,
 }: ResumePdfProps) {
+  const styles = buildStyles(template === "compact" ? "compact" : "classic");
   const contactParts = [
     contact.email,
     contact.phone,

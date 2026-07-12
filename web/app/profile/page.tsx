@@ -18,6 +18,8 @@ import {
   wipeAllData,
 } from "@/lib/storage";
 import type { ResumeProfile } from "@/lib/types";
+import { buildFullBackup, isFullBackup, restoreFullBackup } from "@/lib/full-backup";
+import { decryptBackup, encryptBackup, isEncryptedBackup } from "@/lib/crypto-backup";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ResumeProfile>(emptyProfile);
@@ -26,6 +28,7 @@ export default function ProfilePage() {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const fullBackupInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setProfile(loadProfile());
@@ -71,6 +74,54 @@ export default function ProfilePage() {
       }
       replaceProfile(mergeProfile(parsed));
       setBackupStatus("Profile restored from backup.");
+    } catch (err) {
+      setBackupStatus(err instanceof Error ? err.message : "Couldn't read that backup file.");
+    }
+  }
+
+  async function exportEverything() {
+    let payload = JSON.stringify(buildFullBackup(), null, 2);
+    const passphrase = window.prompt(
+      "Optional: passphrase to encrypt the backup (recommended if it'll live in a cloud drive). Leave blank for plain JSON.",
+    );
+    if (passphrase === null) return; // cancelled
+    if (passphrase) payload = JSON.stringify(await encryptBackup(payload, passphrase), null, 2);
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "workdayz-full-backup.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    setBackupStatus(passphrase ? "Full backup exported (encrypted)." : "Full backup exported.");
+  }
+
+  async function importEverything(file: File) {
+    try {
+      let parsed: unknown = JSON.parse(await file.text());
+      if (isEncryptedBackup(parsed)) {
+        const passphrase = window.prompt("This backup is encrypted — enter its passphrase:");
+        if (!passphrase) {
+          setBackupStatus("Restore cancelled.");
+          return;
+        }
+        try {
+          parsed = JSON.parse(await decryptBackup(parsed, passphrase));
+        } catch {
+          throw new Error("Wrong passphrase (or a corrupted backup file).");
+        }
+      }
+      if (!isFullBackup(parsed)) {
+        throw new Error("That file isn't a Workdayz full backup (for a profile-only file, use Restore from backup).");
+      }
+      if (
+        !window.confirm(
+          "Replace ALL Workdayz data in this browser (every profile, tracked application, and draft) with this backup?",
+        )
+      )
+        return;
+      restoreFullBackup(parsed);
+      window.location.reload();
     } catch (err) {
       setBackupStatus(err instanceof Error ? err.message : "Couldn't read that backup file.");
     }
@@ -170,6 +221,33 @@ export default function ProfilePage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) importBackup(file);
+              e.target.value = "";
+            }}
+          />
+          <span className="opacity-30">|</span>
+          <button
+            type="button"
+            onClick={exportEverything}
+            className="text-blue-600 dark:text-blue-400"
+            title="All profiles + tracked applications + drafts, optionally passphrase-encrypted"
+          >
+            Export everything
+          </button>
+          <button
+            type="button"
+            onClick={() => fullBackupInputRef.current?.click()}
+            className="text-blue-600 dark:text-blue-400"
+          >
+            Restore everything
+          </button>
+          <input
+            ref={fullBackupInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importEverything(file);
               e.target.value = "";
             }}
           />
