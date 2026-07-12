@@ -468,20 +468,60 @@ export function applyAnswers(
   return filled;
 }
 
+/** True when this label matches something autofill already knows how to
+ * fill (a contact synonym or a repeated-section field). */
+function matchesKnownSynonyms(label: string): boolean {
+  const lower = label.toLowerCase();
+  const known = [
+    ...CONTACT_SYNONYMS.flatMap(([, synonyms]) => synonyms),
+    ...TITLE_SYNONYMS,
+    ...COMPANY_SYNONYMS,
+    ...SCHOOL_SYNONYMS,
+    ...DEGREE_SYNONYMS,
+    "field of study", "major", "gpa", "location", "start date", "end date",
+    "graduation date", "description", "cover letter", "resume", "cv",
+  ];
+  return known.some((syn) => lower.includes(syn));
+}
+
 /** Debug report for tuning field synonyms: every visible fillable field's
- * label plus whether it currently holds a value. Contains NO user data —
- * only the employer's form labels. */
+ * label plus whether it currently holds a value, then ready-to-paste custom
+ * rule stubs for the empty fields autofill has no synonym for. Contains NO
+ * user data — only the employer's form labels. */
 export function buildFieldReport(): string {
-  const lines = findFillableFields().map((el) => {
+  const fields = findFillableFields();
+  const lines = fields.map((el) => {
     const kind = el.tagName.toLowerCase() + (el instanceof HTMLInputElement ? `[${el.type}]` : "");
     const state = el.value?.trim() ? "filled" : "empty";
     return `- (${kind}, ${state}) ${fieldLabelText(el).slice(0, 160)}`;
   });
+
+  // Empty + unmatched + not personal + not an essay question → the exact
+  // fields a custom rule can pick up tonight without a code change.
+  const suggestions: string[] = [];
+  for (const el of fields) {
+    if (el.value?.trim()) continue;
+    const label = fieldLabelText(el).trim();
+    if (!label || isPersonalField(label) || label.includes("?")) continue;
+    if (el instanceof HTMLTextAreaElement) continue; // question drafting handles these
+    if (matchesKnownSynonyms(label)) continue;
+    suggestions.push(`${label.slice(0, 80)} = `);
+    if (suggestions.length >= 10) break;
+  }
+
   return [
     `Workdayz field report`,
     `page: ${location.hostname}${location.pathname}`,
     `fields (${lines.length}):`,
     ...lines,
+    ...(suggestions.length
+      ? [
+          ``,
+          `UNMATCHED — paste these into the extension popup's custom answers,`,
+          `fill in the right-hand side, save, and re-run autofill:`,
+          ...suggestions,
+        ]
+      : []),
   ].join("\n");
 }
 

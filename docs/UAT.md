@@ -63,8 +63,11 @@ On the posting page, the Workdayz widget should appear bottom-right.
 - [ ] **For every field it missed:** click **Copy field report** and paste the
       report somewhere safe. It contains only the employer's form labels, never
       your data. This is the single most valuable artifact of the whole UAT —
-      bring it back and the synonym lists get tuned for that tenant. For
-      one-offs, add a popup custom answer (`Field label = value`) yourself.
+      bring it back and the synonym lists get tuned for that tenant.
+      The report ends with an **UNMATCHED** section of ready-made
+      `Field label = ` lines: to fix a missed field on the spot, paste those
+      lines into the extension popup's custom answers, fill in the right-hand
+      side, save, and re-run autofill on the step.
 - [ ] Try **Draft answers to questions** on a step with essay questions;
       confirm "[NEEDS YOUR INPUT]" placeholders appear where only you know the
       answer

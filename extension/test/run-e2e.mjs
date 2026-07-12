@@ -106,6 +106,17 @@ try {
     { label: "veteran", value: "should never fill" }, // self-ID stays off-limits
   ];
 
+  // Field report on the untouched page: unmatched empty fields become
+  // ready-to-paste custom-rule stubs; self-ID and known fields never do.
+  const report = await page.evaluate(() => window.WorkdayzTest.buildFieldReport());
+  check("report suggests rule stub for unmatched field", report.includes("Employee ID = "), report.slice(-400));
+  check("report suggests rule stub for salary field", report.includes("Desired Salary = "));
+  check(
+    "report never suggests self-ID or known fields as rules",
+    !report.includes("veteran = ") && !/First Name = /.test(report),
+    report.slice(-400),
+  );
+
   // Dry-run preview first: highlights targets but writes NOTHING.
   const preview = await page.evaluate(
     ({ p, rules }) => window.WorkdayzTest.previewAutofill(p, rules),
