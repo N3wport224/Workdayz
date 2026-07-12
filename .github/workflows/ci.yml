@@ -26,6 +26,12 @@ jobs:
       - run: npx next build
         env:
           ANTHROPIC_API_KEY: ci-placeholder
+      - name: Install Chromium for UI tests
+        run: npx playwright-core install chromium --with-deps
+      - name: UI e2e (apply page flows, mocked LLM)
+        run: npm run test:ui
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
 
   extension:
     name: Extension (typecheck, build, DOM e2e)
