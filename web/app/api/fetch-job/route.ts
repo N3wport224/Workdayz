@@ -58,6 +58,14 @@ export async function POST(request: Request) {
     return badUrl("That doesn't look like a valid URL.");
   }
 
+  // A Workday careers HOME page (no /job/ in the path) can never yield a
+  // posting — say so instead of failing with a generic extraction error.
+  if (/\.myworkdayjobs\.com$/i.test(url.hostname) && !/\/job\//i.test(url.pathname)) {
+    return badUrl(
+      "That's the careers site home page — open the specific posting and paste ITS URL (it will contain /job/).",
+    );
+  }
+
   try {
     // Workday career sites render client-side, so their HTML shell often has
     // no description — but the posting is public JSON on the SAME host.
@@ -68,7 +76,11 @@ export async function POST(request: Request) {
         const cxsRes = await fetch(cxsUrl, {
           signal: AbortSignal.timeout(10_000),
           redirect: "manual", // same-host JSON endpoint should not redirect
-          headers: { Accept: "application/json" },
+          headers: {
+            Accept: "application/json",
+            // Workday's edge filters non-browser agents.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+          },
         });
         if (cxsRes.ok) {
           const job = extractJobFromCxs(await cxsRes.json(), url.hostname);

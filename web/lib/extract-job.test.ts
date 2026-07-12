@@ -63,6 +63,19 @@ describe("workdayCxsUrl", () => {
     );
   });
 
+  it("maps the Xcel Energy External-site URL shapes (tonight's UAT target)", () => {
+    expect(
+      workdayCxsUrl(
+        "https://xcelenergy.wd1.myworkdayjobs.com/en-US/External/job/Denver-CO/Operations-Analyst_R12345",
+      ),
+    ).toBe("https://xcelenergy.wd1.myworkdayjobs.com/wday/cxs/xcelenergy/External/job/Operations-Analyst_R12345");
+    expect(
+      workdayCxsUrl("https://xcelenergy.wd1.myworkdayjobs.com/External/job/Minneapolis-MN/Sr-Analyst_R6789-1"),
+    ).toBe("https://xcelenergy.wd1.myworkdayjobs.com/wday/cxs/xcelenergy/External/job/Sr-Analyst_R6789-1");
+    // The careers home page is not a posting.
+    expect(workdayCxsUrl("https://xcelenergy.wd1.myworkdayjobs.com/External")).toBeNull();
+  });
+
   it("returns null for non-Workday and non-posting URLs", () => {
     expect(workdayCxsUrl("https://boards.greenhouse.io/acme/jobs/1")).toBeNull();
     expect(workdayCxsUrl("https://acme.wd5.myworkdayjobs.com/en-US/AcmeCareers")).toBeNull();
