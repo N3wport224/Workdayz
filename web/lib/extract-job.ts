@@ -53,6 +53,57 @@ function findJsonLdJobPosting(html: string): Record<string, unknown> | null {
   return null;
 }
 
+/**
+ * Public Workday career sites serve a client-rendered shell, but expose the
+ * posting as JSON at /wday/cxs/<tenant>/<site>/job/<last-path-segment>.
+ * Maps a posting URL to that endpoint, or null for non-Workday URLs.
+ * Handles both /<locale>/<site>/job/... and /<site>/job/... forms.
+ */
+export function workdayCxsUrl(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const host = url.hostname.match(/^([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com$/i);
+  if (!host) return null;
+  const tenant = host[1].toLowerCase();
+  const parts = url.pathname.split("/").filter(Boolean);
+  const jobIndex = parts.indexOf("job");
+  if (jobIndex < 1 || jobIndex >= parts.length - 1) return null;
+  const site = parts[jobIndex - 1];
+  const lastSegment = parts[parts.length - 1];
+  return `${url.origin}/wday/cxs/${tenant}/${encodeURIComponent(site)}/job/${encodeURIComponent(lastSegment)}`;
+}
+
+/** "acme-corp.wd5.myworkdayjobs.com" → "Acme Corp" (best-effort). */
+export function companyFromWorkdayHost(hostname: string): string {
+  const match = hostname.match(/^([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com$/i);
+  if (!match) return "";
+  return match[1]
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+/** Parses a Workday CXS job response into an ExtractedJob, or null when the
+ * shape isn't what we expect (tenant customization, API drift). */
+export function extractJobFromCxs(payload: unknown, hostname: string): ExtractedJob | null {
+  const info = (payload as { jobPostingInfo?: Record<string, unknown> })?.jobPostingInfo;
+  if (!info || typeof info.jobDescription !== "string" || typeof info.title !== "string") {
+    return null;
+  }
+  const org = (payload as { hiringOrganization?: { name?: unknown } })?.hiringOrganization;
+  const location = typeof info.location === "string" ? info.location : "";
+  return {
+    title: info.title,
+    company: typeof org?.name === "string" && org.name ? org.name : companyFromWorkdayHost(hostname),
+    location,
+    description: stripHtml(info.jobDescription),
+  };
+}
+
 export function extractJobFromHtml(html: string): ExtractedJob {
   const ld = findJsonLdJobPosting(html);
   if (ld) {

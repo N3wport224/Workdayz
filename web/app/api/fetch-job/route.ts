@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { NextResponse } from "next/server";
-import { extractJobFromHtml } from "@/lib/extract-job";
+import { extractJobFromCxs, extractJobFromHtml, workdayCxsUrl } from "@/lib/extract-job";
 
 // Server-side fetch of a job posting URL. SSRF-guarded: public http(s) hosts
 // only — this route runs on the user's own machine, and must not become a
@@ -59,6 +59,28 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Workday career sites render client-side, so their HTML shell often has
+    // no description — but the posting is public JSON on the SAME host.
+    // Try that first; any failure falls through to the generic HTML path.
+    const cxsUrl = workdayCxsUrl(url.toString());
+    if (cxsUrl && !(await hostIsBlocked(url.hostname))) {
+      try {
+        const cxsRes = await fetch(cxsUrl, {
+          signal: AbortSignal.timeout(10_000),
+          redirect: "manual", // same-host JSON endpoint should not redirect
+          headers: { Accept: "application/json" },
+        });
+        if (cxsRes.ok) {
+          const job = extractJobFromCxs(await cxsRes.json(), url.hostname);
+          if (job && job.description.length >= 100) {
+            return NextResponse.json({ job: { ...job, sourceUrl: url.toString() } });
+          }
+        }
+      } catch {
+        /* fall through to HTML extraction */
+      }
+    }
+
     // Follow redirects manually so every hop's host gets validated — a public
     // URL must not be able to bounce this request onto localhost or a
     // metadata endpoint.
