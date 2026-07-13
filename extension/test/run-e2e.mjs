@@ -273,6 +273,37 @@ try {
   // Undo restores everything the last run wrote.
   const restored = await page.evaluate(() => window.WorkdayzTest.undoFill());
   check("undo restores fields", restored > 0 && (await val("#firstName")) === "", `restored=${restored}, firstName="${await val("#firstName")}"`);
+
+  // --- Empty-sections page (Xcel layout): sections start with a bare "Add"
+  // button, three identical ones told apart only by their heading. ---
+  const sectionsPage = await browser.newPage();
+  await sectionsPage.goto("file://" + path.join(here, "fixture-sections.html"));
+  await sectionsPage.addScriptTag({ content: harnessJs });
+  const sval = (sel) => sectionsPage.$eval(sel, (el) => el.value);
+
+  const sectionsPkg = {
+    ...pkg,
+    experience: [
+      { id: "e1", company: "Acme Corp", title: "Senior Engineer", location: "", startDate: "2021-06", endDate: "Present", bullets: ["Did a thing"] },
+      { id: "e2", company: "Globex", title: "Engineer", location: "", startDate: "2018-01", endDate: "2021-05", bullets: ["Built stuff"] },
+    ],
+    education: [
+      { id: "ed1", school: "State University", degree: "BS", fieldOfStudy: "CS", startDate: "2014", endDate: "2018", gpa: "" },
+    ],
+    resumePdfBase64: "", resumeFileName: "", coverLetterPdfBase64: "", coverLetterFileName: "", coverLetterText: "",
+  };
+  const sSummary = await sectionsPage.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), sectionsPkg);
+  console.log("sections summary:", JSON.stringify(sSummary));
+
+  check("empty section: clicked Add and filled work panel 1", (await sval("#wt1")) === "Senior Engineer", `wt1="${await sval("#wt1")}"`);
+  check("empty section: work panel 1 company", (await sval("#wc1")) === "Acme Corp");
+  check("empty section: clicked Add AGAIN for work panel 2", (await sval("#wt2")) === "Engineer", `wt2="${await sval("#wt2")}"`);
+  check("empty section: education Add matched by its own heading", (await sval("#es1")) === "State University", `es1="${await sval("#es1")}"`);
+  check(
+    "empty section: Certifications Add left untouched (no cert filler yet)",
+    (await sectionsPage.$("#cn1")) === null,
+  );
+  check("empty section: both work panels reported filled", sSummary.filled.some((s) => s.includes("2 work experience panel")), JSON.stringify(sSummary.filled));
 } finally {
   await browser.close();
 }

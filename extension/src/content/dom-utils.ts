@@ -192,12 +192,20 @@ export function findPanelContainer(
 ): HTMLElement {
   let el: HTMLElement | null = anchor.parentElement;
   let best: HTMLElement = anchor.parentElement ?? anchor;
+  let bestCount = 0;
   for (let depth = 0; depth < 8 && el; depth++) {
     if (allAnchors && allAnchors.filter((a) => el!.contains(a)).length > 1) break;
     const enclosed = fields.filter((f) => el!.contains(f)).length;
-    if (enclosed >= 2) {
+    if (enclosed >= 2 && enclosed > bestCount) {
       best = el;
+      bestCount = enclosed;
       if (enclosed >= 6) break; // large enough to be the whole panel
+    } else if (bestCount >= 2) {
+      // Already have a panel and climbing higher stopped adding fields — stop
+      // before swallowing sibling panels or the whole form. Matters when a
+      // section has only one visible entry, so the anchor-count guard above
+      // never trips.
+      break;
     }
     el = el.parentElement;
   }

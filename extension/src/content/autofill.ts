@@ -111,22 +111,54 @@ function fillWithinPanel(
   }
 }
 
-/** Finds this section's "Add Another" button. Deliberately conservative:
- * text must START with "add", never contain navigation/submission words, and
- * a bare "Add"/"Add Another" is only trusted when it's unambiguous (exactly
- * one on the page). */
-function findAddButton(sectionTerms: string[]): HTMLElement | null {
-  const candidates = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'));
-  const bare: HTMLElement[] = [];
-  for (const el of candidates) {
-    if (!isVisible(el)) continue;
-    const text = (el.textContent ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-    if (!/^add\b/.test(text)) continue;
-    if (/\b(submit|continue|next|save|apply)\b/.test(text)) continue;
-    if (sectionTerms.some((term) => text.includes(term))) return el;
-    if (text === "add" || text === "add another") bare.push(el);
+/** The nearest section heading that appears BEFORE this element in document
+ * order — used to tell three identical "Add" buttons apart by which section
+ * they sit under (Workday renders "Work Experience" / "Education" /
+ * "Certifications" as headings above each section's Add button). */
+function sectionHeadingFor(el: HTMLElement): string {
+  const headings = Array.from(
+    document.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6, legend, [role="heading"]'),
+  );
+  let nearest = "";
+  for (const heading of headings) {
+    if (!isVisible(heading)) continue;
+    // heading precedes el?
+    if (heading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      nearest = heading.textContent ?? nearest;
+    }
   }
-  return bare.length === 1 ? bare[0] : null;
+  return normalizeLower(nearest);
+}
+
+function normalizeLower(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/** Finds a section's Add / "Add Another" button. Conservative: text must
+ * start with "add" and never look like navigation/submission or a
+ * Delete/Remove control. A bare "Add" (no section words in its own text) is
+ * matched by the section heading above it, so three identical "Add" buttons
+ * are told apart. Falls back to a single unambiguous Add button. */
+function findAddButton(sectionTerms: string[]): HTMLElement | null {
+  const adds: HTMLElement[] = [];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))) {
+    if (!isVisible(el)) continue;
+    const text = normalizeLower(el.textContent ?? "");
+    if (!/^add\b/.test(text)) continue;
+    if (/\b(submit|continue|next|save|apply|delete|remove|cancel)\b/.test(text)) continue;
+    adds.push(el);
+  }
+  // 1) The button names its own section ("Add Another Work Experience").
+  for (const el of adds) {
+    if (sectionTerms.some((t) => normalizeLower(el.textContent ?? "").includes(t))) return el;
+  }
+  // 2) A bare "Add" sitting under the matching section heading.
+  for (const el of adds) {
+    const heading = sectionHeadingFor(el);
+    if (sectionTerms.some((t) => heading.includes(t))) return el;
+  }
+  // 3) Only one Add button on the whole step — unambiguous.
+  return adds.length === 1 ? adds[0] : null;
 }
 
 function countAnchors(anchorSynonyms: string[]): number {
