@@ -79,23 +79,32 @@ export function parseDateParts(value: string): { month?: string; year: string } 
   return null;
 }
 
+// Workday's Experience/Education date fields are labeled inconsistently
+// across tenants: "Start Date"/"End Date" on some, "From"/"To" on Xcel and
+// many others. Try every alias.
+const START_DATE_TERMS = ["start date", "from date", "from"];
+const END_DATE_TERMS = ["end date", "to date", "graduation date", "to"];
+
 /**
  * Workday date widgets are usually split Month/Year inputs
  * (dateSectionMonth-input / dateSectionYear-input) under a labeled group.
- * Fill those when present; return false so the caller can fall back to a
- * plain text field.
+ * Fills those when present, trying each group alias ("Start Date", "From",
+ * ...); returns false so the caller can fall back to a plain text field.
  */
-function fillDateParts(scoped: FillableElement[], groupSynonym: string, value: string): boolean {
+function fillDateParts(scoped: FillableElement[], groupSynonyms: string[], value: string): boolean {
   const parsed = parseDateParts(value);
   if (!parsed) return false;
-  const yearField = findFieldByAllTerms(scoped, [groupSynonym, "year"]);
-  if (!yearField) return false;
-  setFieldValue(yearField, parsed.year);
-  if (parsed.month) {
-    const monthField = findFieldByAllTerms(scoped, [groupSynonym, "month"]);
-    if (monthField) setFieldValue(monthField, parsed.month);
+  for (const groupSynonym of groupSynonyms) {
+    const yearField = findFieldByAllTerms(scoped, [groupSynonym, "year"]);
+    if (!yearField) continue;
+    setFieldValue(yearField, parsed.year);
+    if (parsed.month) {
+      const monthField = findFieldByAllTerms(scoped, [groupSynonym, "month"]);
+      if (monthField) setFieldValue(monthField, parsed.month);
+    }
+    return true;
   }
-  return true;
+  return false;
 }
 
 function fillWithinPanel(
@@ -388,14 +397,14 @@ export async function runAutofill(
       const companyCombo = findComboboxBySynonyms(panel, COMPANY_SYNONYMS);
       if (companyCombo) await fillSearchCombobox(companyCombo, entry.company);
     }
-    if (!fillDateParts(scoped, "start date", entry.startDate)) {
-      fillWithinPanel(panel, scoped, [[["start date"], entry.startDate]]);
+    if (!fillDateParts(scoped, START_DATE_TERMS, entry.startDate)) {
+      fillWithinPanel(panel, scoped, [[START_DATE_TERMS, entry.startDate]]);
     }
     if (isPresentDate(entry.endDate)) {
       const checkbox = findCheckboxBySynonyms(panel, CURRENT_ROLE_SYNONYMS);
       if (checkbox) setCheckbox(checkbox, true);
-    } else if (!fillDateParts(scoped, "end date", entry.endDate)) {
-      fillWithinPanel(panel, scoped, [[["end date"], entry.endDate]]);
+    } else if (!fillDateParts(scoped, END_DATE_TERMS, entry.endDate)) {
+      fillWithinPanel(panel, scoped, [[END_DATE_TERMS, entry.endDate]]);
     }
     const description = findFieldBySynonyms(scoped, ["role description", "job description", "description"]);
     if (description) setFieldValue(description, entry.bullets.map((b) => `• ${b}`).join("\n"));
@@ -434,11 +443,11 @@ export async function runAutofill(
       [["field of study", "major"], entry.fieldOfStudy],
       [["gpa"], entry.gpa ?? ""],
     ]);
-    if (!fillDateParts(scoped, "start date", entry.startDate)) {
-      fillWithinPanel(panel, scoped, [[["start date"], entry.startDate]]);
+    if (!fillDateParts(scoped, START_DATE_TERMS, entry.startDate)) {
+      fillWithinPanel(panel, scoped, [[START_DATE_TERMS, entry.startDate]]);
     }
-    if (!fillDateParts(scoped, "end date", entry.endDate)) {
-      fillWithinPanel(panel, scoped, [[["end date", "graduation date"], entry.endDate]]);
+    if (!fillDateParts(scoped, END_DATE_TERMS, entry.endDate)) {
+      fillWithinPanel(panel, scoped, [[END_DATE_TERMS, entry.endDate]]);
     }
   });
   if (educationResult.filledCount) summary.filled.push(`${educationResult.filledCount} education panel(s)`);

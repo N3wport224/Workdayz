@@ -305,6 +305,13 @@ try {
   check("relabeled Add Another: work panel 3 filled", (await sval("#wt3")) === "Analyst", `wt3="${await sval("#wt3")}"`);
   check("all three work panels reported", sSummary.filled.some((s) => s.includes("3 work experience panel")), JSON.stringify(sSummary.filled));
 
+  // Dates labeled "From"/"To" (Xcel wording), not "Start Date"/"End Date".
+  check('"From" date filled (panel 1 start month)', (await sval("#wfm1")) === "06", `wfm1="${await sval("#wfm1")}"`);
+  check('"From" date filled (panel 1 start year)', (await sval("#wfy1")) === "2021", `wfy1="${await sval("#wfy1")}"`);
+  check("Present -> current-role checkbox checked, To left empty", (await sectionsPage.$eval("#wcur1", (el) => el.checked)) && (await sval("#wty1")) === "");
+  check('"To" date filled (panel 2 end month)', (await sval("#wtm2")) === "05", `wtm2="${await sval("#wtm2")}"`);
+  check('"To" date filled (panel 2 end year)', (await sval("#wty2")) === "2021", `wty2="${await sval("#wty2")}"`);
+
   // Education: School is a type-ahead combobox, Degree a listbox — panels must
   // still be detected/grown and both controls committed.
   const es1Committed = await sectionsPage.$eval("#es1", (el) => el.dataset.committed ?? "");
