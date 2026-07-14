@@ -184,11 +184,11 @@ export function findAllFieldsBySynonyms(
  */
 export function findPanelContainer(
   anchor: HTMLElement,
-  fields: FillableElement[],
+  fields: Element[],
   /** One anchor per sibling panel: the walk stops before an ancestor that
    * contains a SECOND anchor, so the last panel can't climb to <body> and
    * swallow the whole form. */
-  allAnchors?: FillableElement[],
+  allAnchors?: Element[],
 ): HTMLElement {
   let el: HTMLElement | null = anchor.parentElement;
   let best: HTMLElement = anchor.parentElement ?? anchor;

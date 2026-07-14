@@ -286,24 +286,39 @@ try {
     experience: [
       { id: "e1", company: "Acme Corp", title: "Senior Engineer", location: "", startDate: "2021-06", endDate: "Present", bullets: ["Did a thing"] },
       { id: "e2", company: "Globex", title: "Engineer", location: "", startDate: "2018-01", endDate: "2021-05", bullets: ["Built stuff"] },
+      { id: "e3", company: "Initech", title: "Analyst", location: "", startDate: "2015", endDate: "2018", bullets: ["Analyzed"] },
     ],
     education: [
-      { id: "ed1", school: "State University", degree: "BS", fieldOfStudy: "CS", startDate: "2014", endDate: "2018", gpa: "" },
+      { id: "ed1", school: "State University", degree: "Bachelor of Science", fieldOfStudy: "CS", startDate: "2011", endDate: "2015", gpa: "" },
+      { id: "ed2", school: "City College", degree: "Bachelor of Arts", fieldOfStudy: "History", startDate: "2009", endDate: "2011", gpa: "" },
     ],
     resumePdfBase64: "", resumeFileName: "", coverLetterPdfBase64: "", coverLetterFileName: "", coverLetterText: "",
   };
   const sSummary = await sectionsPage.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), sectionsPkg);
   console.log("sections summary:", JSON.stringify(sSummary));
 
-  check("empty section: clicked Add and filled work panel 1", (await sval("#wt1")) === "Senior Engineer", `wt1="${await sval("#wt1")}"`);
-  check("empty section: work panel 1 company", (await sval("#wc1")) === "Acme Corp");
-  check("empty section: clicked Add AGAIN for work panel 2", (await sval("#wt2")) === "Engineer", `wt2="${await sval("#wt2")}"`);
-  check("empty section: education Add matched by its own heading", (await sval("#es1")) === "State University", `es1="${await sval("#es1")}"`);
+  // Work: three panels, each requiring a fresh Add click; button relabels to
+  // "Add Another" after the first (same element, reused).
+  check("bare Add: work panel 1 filled", (await sval("#wt1")) === "Senior Engineer", `wt1="${await sval("#wt1")}"`);
+  check("bare Add: work panel 1 company", (await sval("#wc1")) === "Acme Corp");
+  check("relabeled Add Another: work panel 2 filled", (await sval("#wt2")) === "Engineer", `wt2="${await sval("#wt2")}"`);
+  check("relabeled Add Another: work panel 3 filled", (await sval("#wt3")) === "Analyst", `wt3="${await sval("#wt3")}"`);
+  check("all three work panels reported", sSummary.filled.some((s) => s.includes("3 work experience panel")), JSON.stringify(sSummary.filled));
+
+  // Education: School is a type-ahead combobox, Degree a listbox — panels must
+  // still be detected/grown and both controls committed.
+  const es1Committed = await sectionsPage.$eval("#es1", (el) => el.dataset.committed ?? "");
+  check("education combobox anchor: School committed via option click", es1Committed === "State University", `got "${es1Committed}"`);
+  const ed1Degree = await sectionsPage.$eval("#edb1", (el) => el.textContent);
+  check("education listbox: Degree selected", ed1Degree === "Bachelor of Science", `got "${ed1Degree}"`);
+  const es2Committed = await sectionsPage.$eval("#es2", (el) => el.dataset.committed ?? "").catch(() => "MISSING");
+  check("education grew to a SECOND panel (combobox-only section)", es2Committed === "City College", `got "${es2Committed}"`);
+  check("both education panels reported", sSummary.filled.some((s) => s.includes("2 education panel")), JSON.stringify(sSummary.filled));
+
   check(
-    "empty section: Certifications Add left untouched (no cert filler yet)",
+    "Certifications Add left untouched (no cert filler yet)",
     (await sectionsPage.$("#cn1")) === null,
   );
-  check("empty section: both work panels reported filled", sSummary.filled.some((s) => s.includes("2 work experience panel")), JSON.stringify(sSummary.filled));
 } finally {
   await browser.close();
 }

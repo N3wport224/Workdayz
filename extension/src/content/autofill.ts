@@ -161,8 +161,22 @@ function findAddButton(sectionTerms: string[]): HTMLElement | null {
   return adds.length === 1 ? adds[0] : null;
 }
 
-function countAnchors(anchorSynonyms: string[]): number {
-  return findAllFieldsBySynonyms(findFillableFields(), anchorSynonyms, { onlyEmpty: false }).length;
+/** Every interactive control on the page: plain fields PLUS Workday's
+ * type-ahead comboboxes and listbox-button dropdowns (which findFillableFields
+ * deliberately excludes). A newly rendered panel always increases this, so it
+ * is a reliable "a panel appeared" signal even for a panel whose only anchor
+ * is a combobox (e.g. Education's "School or University"). */
+function sectionControlEls(): Element[] {
+  return [
+    ...findFillableFields(),
+    ...Array.from(
+      document.querySelectorAll('input[role="combobox"], input[aria-autocomplete], button[aria-haspopup="listbox"]'),
+    ).filter((el) => isVisible(el)),
+  ];
+}
+
+function countFormControls(): number {
+  return sectionControlEls().length;
 }
 
 function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> {
@@ -179,55 +193,77 @@ function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> 
 
 /**
  * Fills one panel per profile entry, matching in DOM order. Panels already
- * rendered are filled first; for the rest it clicks the section's "Add
- * Another" button (strict label allowlist) and fills each new panel as it
- * appears. Reports entries it still couldn't place.
+ * rendered are filled first; for the rest it clicks the section's "Add" /
+ * "Add Another" button and fills each new panel as it appears.
+ *
+ * `findAnchorEls` returns one element per panel used to locate that panel's
+ * container — it may return comboboxes (Education's "School" is a type-ahead
+ * combobox, not a plain input), so panels are detected/grown even when their
+ * key field isn't a normal text box. `fillEntry` may be async (it awaits
+ * dropdown/combobox popups).
  */
 async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
   entries: T[],
-  anchorSynonyms: string[],
+  findAnchorEls: () => HTMLElement[],
   sectionTerms: string[],
-  fillEntry: (panel: HTMLElement, entry: T, scoped: FillableElement[]) => void,
+  fillEntry: (panel: HTMLElement, entry: T, scoped: FillableElement[]) => void | Promise<void>,
 ): Promise<{ filledCount: number; remaining: number }> {
   if (entries.length === 0) return { filledCount: 0, remaining: 0 };
 
   const usedPanels: HTMLElement[] = [];
-  let pool = findFillableFields();
-  const anchors = findAllFieldsBySynonyms(pool, anchorSynonyms, { onlyEmpty: false });
-
   let entryIndex = 0;
-  for (let i = 0; i < anchors.length && entryIndex < entries.length; i++) {
-    const panel = findPanelContainer(anchors[i], pool, anchors);
-    fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
+
+  const fillAt = async (anchor: HTMLElement) => {
+    const controls = sectionControlEls().filter((c) => !usedPanels.some((p) => p.contains(c)));
+    const pool = findFillableFields().filter((f) => !usedPanels.some((p) => p.contains(f)));
+    const panel = findPanelContainer(anchor, controls, findAnchorEls());
+    await fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
     usedPanels.push(panel);
     entryIndex++;
-    // Remove this panel's fields from the pool so later panels can't be
-    // matched to the same fields if panel boundaries happened to overlap.
-    pool = pool.filter((f) => !panel.contains(f));
+  };
+
+  // 1) Fill panels already on the page.
+  for (const anchor of findAnchorEls()) {
+    if (entryIndex >= entries.length) break;
+    if (usedPanels.some((p) => p.contains(anchor))) continue;
+    await fillAt(anchor);
   }
 
-  // Grow the section for the remaining entries.
-  let safety = 10;
+  // 2) Grow the section for the rest. Reuse the same Add button element across
+  // iterations (Workday relabels it "Add Another" and moves it down but keeps
+  // the element); only re-find it if it detaches. A new panel is detected by a
+  // rise in total control count, which works even for combobox-only panels.
+  let addButton = findAddButton(sectionTerms);
+  let safety = 12;
   while (entryIndex < entries.length && safety-- > 0) {
-    const addButton = findAddButton(sectionTerms);
+    if (!addButton || !addButton.isConnected || !isVisible(addButton)) {
+      addButton = findAddButton(sectionTerms);
+    }
     if (!addButton) break;
-    const before = countAnchors(anchorSynonyms);
+    const before = countFormControls();
     addButton.click();
-    const appeared = await waitFor(() => countAnchors(anchorSynonyms) > before, 3000);
-    if (!appeared) break;
-    pool = findFillableFields().filter((f) => !usedPanels.some((p) => p.contains(f)));
-    const fresh = findAllFieldsBySynonyms(pool, anchorSynonyms, { onlyEmpty: false });
-    if (fresh.length === 0) break;
-    // Boundary detection uses every anchor on the page (incl. already-used
-    // panels) so the new panel's walk can't climb past its siblings.
-    const allAnchors = findAllFieldsBySynonyms(findFillableFields(), anchorSynonyms, { onlyEmpty: false });
-    const panel = findPanelContainer(fresh[0], pool, allAnchors);
-    fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
-    usedPanels.push(panel);
-    entryIndex++;
+    const grew = await waitFor(() => countFormControls() > before, 4500);
+    if (!grew) break;
+    const fresh = findAnchorEls().find((a) => !usedPanels.some((p) => p.contains(a)));
+    if (!fresh) break;
+    await fillAt(fresh);
   }
 
   return { filledCount: entryIndex, remaining: entries.length - entryIndex };
+}
+
+/** Anchor elements for a repeated section: plain-input matches first, else
+ * visible type-ahead comboboxes whose label matches (Education's School). */
+function anchorEls(synonyms: string[]): HTMLElement[] {
+  const textAnchors = findAllFieldsBySynonyms(findFillableFields(), synonyms, { onlyEmpty: false });
+  if (textAnchors.length) return textAnchors;
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('input[role="combobox"], input[aria-autocomplete]'),
+  ).filter((el) => {
+    if (!isVisible(el)) return false;
+    const label = fieldLabelText(el).toLowerCase();
+    return synonyms.some((s) => label.includes(s));
+  });
 }
 
 /**
@@ -341,12 +377,17 @@ export async function runAutofill(
     summary.filled.push("cover letter text");
   }
 
-  const experienceResult = await fillRepeatedSection(pkg.experience, TITLE_SYNONYMS, ["work experience", "experience", "job history"], (panel, entry, scoped) => {
+  const experienceResult = await fillRepeatedSection(pkg.experience, () => anchorEls(TITLE_SYNONYMS), ["work experience", "experience", "job history"], async (panel, entry, scoped) => {
     fillWithinPanel(panel, scoped, [
       [TITLE_SYNONYMS, entry.title],
       [COMPANY_SYNONYMS, entry.company],
       [["location", "city"], entry.location],
     ]);
+    // Company/title are occasionally type-ahead comboboxes rather than inputs.
+    if (!findFieldBySynonyms(scoped, COMPANY_SYNONYMS, { onlyEmpty: false }) && entry.company) {
+      const companyCombo = findComboboxBySynonyms(panel, COMPANY_SYNONYMS);
+      if (companyCombo) await fillSearchCombobox(companyCombo, entry.company);
+    }
     if (!fillDateParts(scoped, "start date", entry.startDate)) {
       fillWithinPanel(panel, scoped, [[["start date"], entry.startDate]]);
     }
@@ -366,10 +407,30 @@ export async function runAutofill(
     );
   }
 
-  const educationResult = await fillRepeatedSection(pkg.education, SCHOOL_SYNONYMS, ["education"], (panel, entry, scoped) => {
+  const educationResult = await fillRepeatedSection(pkg.education, () => anchorEls(SCHOOL_SYNONYMS), ["education"], async (panel, entry, scoped) => {
+    // School: a plain input on some tenants, a type-ahead combobox on Xcel.
+    const schoolInput = findFieldBySynonyms(scoped, SCHOOL_SYNONYMS);
+    if (schoolInput) {
+      setFieldValue(schoolInput, entry.school);
+    } else if (entry.school) {
+      const schoolCombo = findComboboxBySynonyms(panel, SCHOOL_SYNONYMS);
+      if (schoolCombo) await fillSearchCombobox(schoolCombo, entry.school);
+    }
+    // Degree: input, listbox button ("Select One"), or combobox.
+    const degreeInput = findFieldBySynonyms(scoped, DEGREE_SYNONYMS);
+    if (degreeInput) {
+      setFieldValue(degreeInput, entry.degree);
+    } else if (entry.degree) {
+      const degreeListbox = findListboxButtonBySynonyms(panel, DEGREE_SYNONYMS);
+      if (degreeListbox && !(await fillListbox(degreeListbox, entry.degree))) {
+        const degreeCombo = findComboboxBySynonyms(panel, DEGREE_SYNONYMS);
+        if (degreeCombo) await fillSearchCombobox(degreeCombo, entry.degree);
+      } else if (!degreeListbox) {
+        const degreeCombo = findComboboxBySynonyms(panel, DEGREE_SYNONYMS);
+        if (degreeCombo) await fillSearchCombobox(degreeCombo, entry.degree);
+      }
+    }
     fillWithinPanel(panel, scoped, [
-      [SCHOOL_SYNONYMS, entry.school],
-      [DEGREE_SYNONYMS, entry.degree],
       [["field of study", "major"], entry.fieldOfStudy],
       [["gpa"], entry.gpa ?? ""],
     ]);

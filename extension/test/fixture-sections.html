@@ -3,11 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <title>Mock Workday — My Experience (empty sections)</title>
+  <style>
+    [role="listbox"] { border: 1px solid #999; list-style: none; padding: 4px; margin: 0; }
+    [role="option"] { cursor: pointer; padding: 2px 6px; }
+    .hidden { display: none; }
+  </style>
 </head>
 <body>
   <!-- Mimics Xcel's "My Experience" step: each section starts EMPTY with a
-       bare "Add" button, and all three Add buttons have identical text. The
-       only way to tell them apart is the section heading above each. -->
+       bare "Add" button; all three Add buttons have identical text and are
+       told apart only by the heading above them. After the first add, the
+       button RELABELS to "Add Another" (same element). Education's School is
+       a type-ahead combobox and Degree is a listbox button — both are the
+       kinds of control findFillableFields() excludes, which is exactly what
+       broke panel detection on the real site. -->
   <h1>My Experience</h1>
 
   <section>
@@ -34,36 +43,83 @@
   <button data-automation-id="bottom-navigation-next-button">Save and Continue</button>
 
   <script>
-    // Each "Add" renders its panel ASYNCHRONOUSLY, inside its own section
-    // (before that section's Add button), exactly like Workday.
+    // --- Work Experience: plain Job Title + Company inputs, async render,
+    //     button relabels to "Add Another" after the first add. ---
     let w = 0;
     document.getElementById("addWork").addEventListener("click", () => {
       const n = ++w;
       const d = document.createElement("div");
-      d.className = "formField";
+      d.className = "panel";
       d.innerHTML =
         '<label for="wt' + n + '">Job Title</label><input id="wt' + n + '" type="text" />' +
         '<label for="wc' + n + '">Company</label><input id="wc' + n + '" type="text" />';
-      setTimeout(() => document.getElementById("workPanels").appendChild(d), 200);
+      setTimeout(() => {
+        document.getElementById("workPanels").appendChild(d);
+        document.getElementById("addWork").textContent = "Add Another"; // relabel, same element
+      }, 250);
     });
+
+    // --- Education: School is a type-ahead COMBOBOX, Degree is a LISTBOX
+    //     button. Both are excluded from findFillableFields(). ---
     let e = 0;
     document.getElementById("addEdu").addEventListener("click", () => {
       const n = ++e;
       const d = document.createElement("div");
-      d.className = "formField";
-      d.innerHTML = '<label for="es' + n + '">School</label><input id="es' + n + '" type="text" />';
-      setTimeout(() => document.getElementById("eduPanels").appendChild(d), 200);
+      d.className = "panel";
+      d.innerHTML =
+        '<label id="esl' + n + '" for="es' + n + '">School or University</label>' +
+        '<input id="es' + n + '" role="combobox" aria-autocomplete="list" aria-labelledby="esl' + n + '" type="text" />' +
+        '<ul id="eso' + n + '" role="listbox" class="hidden">' +
+        '<li role="option">State University</li><li role="option">City College</li></ul>' +
+        '<label id="edl' + n + '">Degree</label>' +
+        '<button id="edb' + n + '" aria-haspopup="listbox" aria-labelledby="edl' + n + '" type="button">Select One</button>' +
+        '<ul id="edo' + n + '" role="listbox" class="hidden"><li role="option">Bachelor of Science</li><li role="option">Bachelor of Arts</li></ul>' +
+        '<label for="ef' + n + '">Field of Study</label><input id="ef' + n + '" type="text" />';
+      setTimeout(() => {
+        document.getElementById("eduPanels").appendChild(d);
+        document.getElementById("addEdu").textContent = "Add Another";
+        wireCombobox(d.querySelector("#es" + n), d.querySelector("#eso" + n));
+        wireListbox(d.querySelector("#edb" + n), d.querySelector("#edo" + n));
+      }, 250);
     });
-    // Certifications intentionally has no filler yet — its Add must NOT be
-    // clicked by the experience/education logic.
+
+    // Certifications intentionally has no filler yet — its Add must NOT fire.
     let c = 0;
     document.getElementById("addCert").addEventListener("click", () => {
       const n = ++c;
       const d = document.createElement("div");
-      d.className = "formField";
       d.innerHTML = '<label for="cn' + n + '">Certification</label><input id="cn' + n + '" type="text" />';
-      setTimeout(() => document.getElementById("certPanels").appendChild(d), 200);
+      setTimeout(() => document.getElementById("certPanels").appendChild(d), 250);
     });
+
+    function wireCombobox(input, options) {
+      input.addEventListener("input", () => {
+        const q = input.value.toLowerCase();
+        let any = false;
+        options.querySelectorAll('[role="option"]').forEach((opt) => {
+          const show = q && opt.textContent.toLowerCase().includes(q);
+          opt.style.display = show ? "" : "none";
+          if (show) any = true;
+        });
+        options.classList.toggle("hidden", !any);
+      });
+      options.querySelectorAll('[role="option"]').forEach((opt) => {
+        opt.addEventListener("click", () => {
+          input.value = opt.textContent;
+          input.dataset.committed = opt.textContent;
+          options.classList.add("hidden");
+        });
+      });
+    }
+    function wireListbox(btn, list) {
+      btn.addEventListener("click", () => list.classList.toggle("hidden"));
+      list.querySelectorAll('[role="option"]').forEach((opt) => {
+        opt.addEventListener("click", () => {
+          btn.textContent = opt.textContent;
+          list.classList.add("hidden");
+        });
+      });
+    }
   </script>
 </body>
 </html>
