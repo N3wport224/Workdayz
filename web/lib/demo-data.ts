@@ -58,6 +58,15 @@ export const demoProfile: ResumeProfile = {
     },
   ],
   certifications: ["Lean Six Sigma Green Belt"],
+  certificationDetails: [
+    {
+      id: "demo-cert-1",
+      name: "Lean Six Sigma Green Belt",
+      issuer: "ASQ",
+      issueDate: "03/2022",
+      expirationDate: "",
+    },
+  ],
   projects: [
     {
       id: "demo-proj-1",

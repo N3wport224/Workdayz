@@ -524,6 +524,7 @@ function ApplicationDetail({
         experience: application.experience,
         education: application.education,
         certifications: application.certifications,
+        certificationDetails: application.certificationDetails,
         coverLetterText: application.coverLetterText,
         resumePdfBase64: resumePdf.base64,
         resumeFileName: resumePdf.fileName,

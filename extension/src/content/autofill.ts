@@ -1,4 +1,4 @@
-import type { AutofillPackage, AutofillRunSummary, CustomFillRule, EducationEntry, ExperienceEntry } from "../types";
+import type { AutofillPackage, AutofillRunSummary, CertificationEntry, CustomFillRule, EducationEntry, ExperienceEntry } from "../types";
 import {
   attachFileToInput,
   fieldLabelText,
@@ -52,6 +52,10 @@ const COMPANY_SYNONYMS = ["employer", "company name", "company"];
 const SCHOOL_SYNONYMS = ["school name", "school", "institution", "university"];
 const DEGREE_SYNONYMS = ["degree"];
 const CURRENT_ROLE_SYNONYMS = ["current", "i currently work here", "present"];
+const CERT_NAME_SYNONYMS = ["certification", "certificate", "license", "credential"];
+const ISSUER_SYNONYMS = ["issuing organization", "issued by", "issuer", "issuing body"];
+const ISSUED_DATE_TERMS = ["issued date", "issue date", "issued", "date acquired", "date obtained"];
+const EXPIRATION_DATE_TERMS = ["expiration date", "expiry date", "expires", "expiration", "valid until"];
 
 function isPresentDate(value: string): boolean {
   return /present|current/i.test(value);
@@ -266,7 +270,7 @@ function waitFor(condition: () => boolean, timeoutMs: number): Promise<boolean> 
  * key field isn't a normal text box. `fillEntry` may be async (it awaits
  * dropdown/combobox popups).
  */
-async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
+async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry | CertificationEntry>(
   entries: T[],
   findAnchorEls: () => HTMLElement[],
   sectionTerms: string[],
@@ -280,7 +284,11 @@ async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
   const fillAt = async (anchor: HTMLElement) => {
     const controls = sectionControlEls().filter((c) => !usedPanels.some((p) => p.contains(c)));
     const pool = findFillableFields().filter((f) => !usedPanels.some((p) => p.contains(f)));
-    const panel = findPanelContainer(anchor, controls, findAnchorEls());
+    // Boundary = anchors from EVERY repeated section, so a panel with only
+    // one counted control (a certification's name combobox — its readonly
+    // date boxes don't count) can't climb past its section and swallow
+    // another section's fields.
+    const panel = findPanelContainer(anchor, controls, allRepeatedAnchors());
     await fillEntry(panel, entries[entryIndex], pool.filter((f) => panel.contains(f)));
     usedPanels.push(panel);
     entryIndex++;
@@ -314,6 +322,13 @@ async function fillRepeatedSection<T extends ExperienceEntry | EducationEntry>(
   }
 
   return { filledCount: entryIndex, remaining: entries.length - entryIndex };
+}
+
+/** Anchors from every repeated section (experience/education/certifications)
+ * — used only as the panel-boundary guard so one section's panel can't
+ * absorb another's controls. */
+function allRepeatedAnchors(): HTMLElement[] {
+  return [...anchorEls(TITLE_SYNONYMS), ...anchorEls(SCHOOL_SYNONYMS), ...anchorEls(CERT_NAME_SYNONYMS)];
 }
 
 /** Anchor elements for a repeated section: plain-input matches first, else
@@ -503,6 +518,39 @@ export async function runAutofill(
   if (educationResult.remaining) {
     summary.skipped.push(
       `${educationResult.remaining} more education entr${educationResult.remaining === 1 ? "y" : "ies"} (couldn't find/grow this section's "Add Another" button — add the panel manually and re-run)`,
+    );
+  }
+
+  const certifications: CertificationEntry[] = Array.isArray(pkg.certificationDetails)
+    ? pkg.certificationDetails.filter((c) => c && c.name?.trim())
+    : [];
+  const certResult = await fillRepeatedSection(
+    certifications,
+    () => anchorEls(CERT_NAME_SYNONYMS),
+    ["certification", "license", "certifications licenses"],
+    async (panel, entry, scoped) => {
+      // Certification name: plain input, type-ahead combobox, or listbox.
+      const nameInput = findFieldBySynonyms(scoped, CERT_NAME_SYNONYMS);
+      if (nameInput) {
+        setFieldValue(nameInput, entry.name);
+      } else {
+        const nameCombo = findComboboxBySynonyms(panel, CERT_NAME_SYNONYMS);
+        if (nameCombo) {
+          await fillSearchCombobox(nameCombo, entry.name);
+        } else {
+          const nameListbox = findListboxButtonBySynonyms(panel, CERT_NAME_SYNONYMS);
+          if (nameListbox) await fillListbox(nameListbox, entry.name);
+        }
+      }
+      if (entry.issuer) fillWithinPanel(panel, scoped, [[ISSUER_SYNONYMS, entry.issuer]]);
+      if (entry.issueDate) tryFillDate(panel, scoped, ISSUED_DATE_TERMS, entry.issueDate);
+      if (entry.expirationDate) tryFillDate(panel, scoped, EXPIRATION_DATE_TERMS, entry.expirationDate);
+    },
+  );
+  if (certResult.filledCount) summary.filled.push(`${certResult.filledCount} certification panel(s)`);
+  if (certResult.remaining) {
+    summary.skipped.push(
+      `${certResult.remaining} more certification entr${certResult.remaining === 1 ? "y" : "ies"} (couldn't find/grow this section's "Add" button — add the panel manually and re-run)`,
     );
   }
 

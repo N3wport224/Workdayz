@@ -42,13 +42,26 @@ export interface ProjectEntry {
   description: string;
 }
 
+export interface CertificationEntry {
+  id: string;
+  name: string;
+  issuer?: string;
+  /** "MM/YYYY", "YYYY", or free text; parsed leniently for autofill. */
+  issueDate?: string;
+  expirationDate?: string;
+}
+
 export interface ResumeProfile {
   contact: ContactInfo;
   summary: string;
   skills: string[];
   experience: WorkExperience[];
   education: EducationEntry[];
+  /** Certification names — kept in sync with certificationDetails[].name for
+   * the PDF/tailoring text list; certificationDetails holds the structured
+   * data the extension autofills into Workday's Certifications section. */
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   projects?: ProjectEntry[];
 }
 
@@ -140,6 +153,7 @@ export interface SavedApplication {
   experience: (WorkExperience & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   projects?: ProjectEntry[];
   coverLetterText: string;
   atsScore: AtsScoreBreakdown;
@@ -167,6 +181,7 @@ export interface AutofillPackage {
   experience: (WorkExperience & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;

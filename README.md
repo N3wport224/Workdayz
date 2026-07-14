@@ -159,9 +159,15 @@ track its status over time.
 - **LinkedIn import** — a LinkedIn "Save to PDF" profile export imports
   like any resume.
 - **First-run tour** — a three-step guided start for new users.
-- **Autofill: grows sections itself** — clicks the section's "Add Another"
-  button (strict label allowlist) and fills each new panel as Workday
-  renders it, so multi-role histories fill without manual panel-adding.
+- **Autofill: grows sections itself** — clicks the section's "Add"/"Add
+  Another" button (told apart by section heading) and fills each new panel as
+  Workday renders it, so multi-role work history, education, AND
+  certifications fill without manual panel-adding — including type-ahead
+  School/Certification comboboxes, Degree dropdowns, and readonly "From/To"
+  and "Issued/Expiration" MM/YYYY date boxes.
+- **Structured certifications** — name, issuer, and issued/expiration dates
+  on the profile, imported from your resume, and autofilled into Workday's
+  Certifications/Licenses section.
 - **Autofill: dry-run preview** — see exactly which fields WOULD be filled
   (dashed highlights) without writing anything.
 - **Per-tenant rules & sharing** — custom answers can be scoped to one

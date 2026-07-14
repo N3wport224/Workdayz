@@ -35,6 +35,14 @@ export interface EducationEntry {
   gpa?: string;
 }
 
+export interface CertificationEntry {
+  id: string;
+  name: string;
+  issuer?: string;
+  issueDate?: string;
+  expirationDate?: string;
+}
+
 export interface JobPosting {
   title: string;
   company: string;
@@ -53,6 +61,7 @@ export interface AutofillPackage {
   experience: ExperienceEntry[];
   education: EducationEntry[];
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;
@@ -70,6 +79,7 @@ export interface BaseProfile {
   experience: ExperienceEntry[];
   education: EducationEntry[];
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   /** Set by the background worker when the web app syncs the profile. */
   syncedAt?: string;
 }

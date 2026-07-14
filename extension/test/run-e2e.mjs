@@ -292,6 +292,10 @@ try {
       { id: "ed1", school: "State University", degree: "Bachelor of Science", fieldOfStudy: "CS", startDate: "2011", endDate: "2015", gpa: "" },
       { id: "ed2", school: "City College", degree: "Bachelor of Arts", fieldOfStudy: "History", startDate: "2009", endDate: "2011", gpa: "" },
     ],
+    certificationDetails: [
+      { id: "c1", name: "PMP - PMI", issuer: "PMI", issueDate: "05/2024", expirationDate: "05/2026" },
+      { id: "c2", name: "CSM - Scrum Alliance", issuer: "Scrum Alliance", issueDate: "01/2023", expirationDate: "" },
+    ],
     resumePdfBase64: "", resumeFileName: "", coverLetterPdfBase64: "", coverLetterFileName: "", coverLetterText: "",
   };
   const sSummary = await sectionsPage.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), sectionsPkg);
@@ -323,10 +327,16 @@ try {
   check("education grew to a SECOND panel (combobox-only section)", es2Committed === "City College", `got "${es2Committed}"`);
   check("both education panels reported", sSummary.filled.some((s) => s.includes("2 education panel")), JSON.stringify(sSummary.filled));
 
-  check(
-    "Certifications Add left untouched (no cert filler yet)",
-    (await sectionsPage.$("#cn1")) === null,
-  );
+  // Certifications: name combobox + readonly Issued/Expiration MM/YYYY boxes,
+  // grown across two panels.
+  const cc1 = await sectionsPage.$eval("#cc1", (el) => el.dataset.committed ?? "");
+  check("cert 1 name committed via combobox", cc1 === "PMP - PMI", `got "${cc1}"`);
+  check("cert 1 issued date filled", (await sval("#ci1")) === "05/2024", `ci1="${await sval("#ci1")}"`);
+  check("cert 1 expiration date filled", (await sval("#ce1")) === "05/2026", `ce1="${await sval("#ce1")}"`);
+  const cc2 = await sectionsPage.$eval("#cc2", (el) => el.dataset.committed ?? "").catch(() => "MISSING");
+  check("cert section grew to a 2nd panel", cc2 === "CSM - Scrum Alliance", `got "${cc2}"`);
+  check("cert 2 no expiration left empty", (await sval("#ce2")) === "", `ce2="${await sval("#ce2")}"`);
+  check("both certification panels reported", sSummary.filled.some((s) => s.includes("2 certification panel")), JSON.stringify(sSummary.filled));
 } finally {
   await browser.close();
 }

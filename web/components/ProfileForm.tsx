@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { analyzeBullet } from "@/lib/bullet-strength";
-import type { ContactInfo, EducationEntry, ProjectEntry, ResumeProfile, WorkExperience } from "@/lib/types";
+import type { CertificationEntry, ContactInfo, EducationEntry, ProjectEntry, ResumeProfile, WorkExperience } from "@/lib/types";
 
 function BulletStrengthDot({ bullet }: { bullet: string }) {
   if (!bullet.trim()) return null;
@@ -61,7 +61,21 @@ export function ProfileForm({
   // Comma-separated lists keep raw text state: deriving the input value from
   // the parsed array would eat the trailing comma as you type it.
   const [skillsText, setSkillsText] = useState(initial.skills.join(", "));
-  const [certificationsText, setCertificationsText] = useState(initial.certifications.join(", "));
+
+  /** Keeps certifications (names) in sync with certificationDetails so the
+   * PDF/tailoring list and the autofill data never drift apart. */
+  function setCertifications(details: CertificationEntry[]) {
+    setProfile((p) => ({
+      ...p,
+      certificationDetails: details,
+      certifications: details.map((c) => c.name).filter((n) => n.trim()),
+    }));
+    setSaved(false);
+  }
+
+  function updateCertification(id: string, patch: Partial<CertificationEntry>) {
+    setCertifications((profile.certificationDetails ?? []).map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
 
   function updateContact<K extends keyof ContactInfo>(key: K, value: ContactInfo[K]) {
     setProfile((p) => ({ ...p, contact: { ...p.contact, [key]: value } }));
@@ -389,17 +403,70 @@ export function ProfileForm({
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Certifications</h2>
-        <label className={labelClass}>Comma-separated</label>
-        <input
-          className={inputClass}
-          value={certificationsText}
-          onChange={(e) => {
-            setCertificationsText(e.target.value);
-            setProfile((p) => ({ ...p, certifications: parseList(e.target.value) }));
-            setSaved(false);
-          }}
-        />
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Certifications &amp; Licenses</h2>
+          <button
+            type="button"
+            className="text-sm text-blue-600 dark:text-blue-400"
+            onClick={() =>
+              setCertifications([
+                ...(profile.certificationDetails ?? []),
+                { id: crypto.randomUUID(), name: "", issuer: "", issueDate: "", expirationDate: "" },
+              ])
+            }
+          >
+            + Add certification
+          </button>
+        </div>
+        <p className="text-xs opacity-60">
+          Name is used on your resume; issuer and dates are filled into Workday&apos;s
+          Certifications/Licenses section. Dates as MM/YYYY (e.g. 05/2026) — leave blank if none.
+        </p>
+        {(profile.certificationDetails ?? []).map((cert) => (
+          <div key={cert.id} className="rounded-lg border border-black/10 dark:border-white/15 p-3 space-y-2">
+            <input
+              className={inputClass}
+              placeholder="Certification / license name (e.g. CSM — Scrum Alliance)"
+              value={cert.name}
+              onChange={(e) => updateCertification(cert.id, { name: e.target.value })}
+            />
+            <input
+              className={inputClass}
+              placeholder="Issuing organization (optional)"
+              value={cert.issuer ?? ""}
+              onChange={(e) => updateCertification(cert.id, { issuer: e.target.value })}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={labelClass}>Issued (MM/YYYY)</label>
+                <input
+                  className={inputClass}
+                  placeholder="05/2024"
+                  value={cert.issueDate ?? ""}
+                  onChange={(e) => updateCertification(cert.id, { issueDate: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Expires (MM/YYYY)</label>
+                <input
+                  className={inputClass}
+                  placeholder="05/2026"
+                  value={cert.expirationDate ?? ""}
+                  onChange={(e) => updateCertification(cert.id, { expirationDate: e.target.value })}
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-rose-600 dark:text-rose-400"
+              onClick={() =>
+                setCertifications((profile.certificationDetails ?? []).filter((c) => c.id !== cert.id))
+              }
+            >
+              Remove certification
+            </button>
+          </div>
+        ))}
       </section>
 
       <div className="flex items-center gap-3">

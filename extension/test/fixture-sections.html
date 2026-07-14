@@ -93,13 +93,26 @@
       }, 250);
     });
 
-    // Certifications intentionally has no filler yet — its Add must NOT fire.
+    // Certifications: name is a type-ahead combobox; Issued/Expiration are
+    // single readonly "MM / YYYY" boxes labeled on the wrapper (Xcel).
     let c = 0;
     document.getElementById("addCert").addEventListener("click", () => {
       const n = ++c;
       const d = document.createElement("div");
-      d.innerHTML = '<label for="cn' + n + '">Certification</label><input id="cn' + n + '" type="text" />';
-      setTimeout(() => document.getElementById("certPanels").appendChild(d), 250);
+      d.className = "panel";
+      d.innerHTML =
+        '<label id="ccl' + n + '" for="cc' + n + '">Certification *</label>' +
+        '<input id="cc' + n + '" role="combobox" aria-autocomplete="list" aria-labelledby="ccl' + n + '" type="text" />' +
+        '<ul id="cco' + n + '" role="listbox" class="hidden"><li role="option">PMP - PMI</li><li role="option">CSM - Scrum Alliance</li></ul>' +
+        '<div data-automation-id="formField-issued"><label>Issued Date</label>' +
+        '<input id="ci' + n + '" placeholder="MM / YYYY" type="text" readonly /></div>' +
+        '<div data-automation-id="formField-exp"><label>Expiration Date</label>' +
+        '<input id="ce' + n + '" placeholder="MM / YYYY" type="text" readonly /></div>';
+      setTimeout(() => {
+        document.getElementById("certPanels").appendChild(d);
+        document.getElementById("addCert").textContent = "Add Another";
+        wireCombobox(d.querySelector("#cc" + n), d.querySelector("#cco" + n));
+      }, 250);
     });
 
     function wireCombobox(input, options) {

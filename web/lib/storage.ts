@@ -1,6 +1,6 @@
 "use client";
 
-import type { ResumeProfile } from "./types";
+import type { CertificationEntry, ResumeProfile } from "./types";
 
 const LEGACY_PROFILE_KEY = "workdayz.profile.v1";
 const PROFILES_KEY = "workdayz.profiles.v1";
@@ -24,8 +24,40 @@ export const emptyProfile: ResumeProfile = {
   experience: [],
   education: [],
   certifications: [],
+  certificationDetails: [],
   projects: [],
 };
+
+/** Reconciles the two certification representations: certificationDetails is
+ * the source of truth (name + issuer + dates for autofill); certifications
+ * (string[] of names) is derived for the PDF/tailoring text list. Migrates an
+ * older profile that only had certifications: string[]. */
+function normalizeCertifications(partial: Partial<ResumeProfile>): {
+  certifications: string[];
+  certificationDetails: CertificationEntry[];
+} {
+  const rawDetails = Array.isArray(partial.certificationDetails) ? partial.certificationDetails : null;
+  if (rawDetails && rawDetails.length) {
+    const details = rawDetails
+      .filter((c): c is CertificationEntry => Boolean(c) && typeof c.name === "string")
+      .map((c) => ({
+        id: typeof c.id === "string" && c.id ? c.id : crypto.randomUUID(),
+        name: c.name,
+        issuer: typeof c.issuer === "string" ? c.issuer : undefined,
+        issueDate: typeof c.issueDate === "string" ? c.issueDate : undefined,
+        expirationDate: typeof c.expirationDate === "string" ? c.expirationDate : undefined,
+      }));
+    return { certificationDetails: details, certifications: details.map((c) => c.name) };
+  }
+  // Legacy: only string[] names. Build details from them.
+  const names = Array.isArray(partial.certifications)
+    ? partial.certifications.filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+    : [];
+  return {
+    certifications: names,
+    certificationDetails: names.map((name) => ({ id: crypto.randomUUID(), name })),
+  };
+}
 
 /** Merges a possibly-partial stored/imported profile onto the empty profile,
  * deep-merging `contact` so every field the UI binds to is a real string and
@@ -34,6 +66,7 @@ export const emptyProfile: ResumeProfile = {
 export function mergeProfile(partial: Partial<ResumeProfile> | null | undefined): ResumeProfile {
   if (!partial || typeof partial !== "object") return emptyProfile;
   const arr = <T>(v: T[] | undefined, fallback: T[]): T[] => (Array.isArray(v) ? v : fallback);
+  const certs = normalizeCertifications(partial);
   return {
     ...emptyProfile,
     ...partial,
@@ -41,7 +74,8 @@ export function mergeProfile(partial: Partial<ResumeProfile> | null | undefined)
     skills: arr(partial.skills, []),
     experience: arr(partial.experience, []),
     education: arr(partial.education, []),
-    certifications: arr(partial.certifications, []),
+    certifications: certs.certifications,
+    certificationDetails: certs.certificationDetails,
     projects: arr(partial.projects, []),
   };
 }

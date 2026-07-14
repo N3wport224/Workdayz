@@ -54,6 +54,7 @@ function packageFromProfile(profile: BaseProfile): AutofillPackage {
     experience: profile.experience,
     education: profile.education,
     certifications: profile.certifications,
+    certificationDetails: profile.certificationDetails,
     coverLetterText: "",
     resumePdfBase64: "",
     resumeFileName: "",
