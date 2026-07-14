@@ -381,6 +381,7 @@ export default function ApplyPage() {
           }),
           education: profile.education,
           certifications: profile.certifications,
+          certificationDetails: profile.certificationDetails,
           projects: profile.projects,
           coverLetterText: tailored.coverLetter,
           atsScore: tailored.atsScore,
@@ -481,6 +482,7 @@ export default function ApplyPage() {
       experience: merged,
       education: profile.education,
       certifications: profile.certifications,
+      certificationDetails: profile.certificationDetails,
       projects: profile.projects,
       companyName: job.company,
       template,
@@ -499,6 +501,7 @@ export default function ApplyPage() {
       experience: merged,
       education: profile.education,
       certifications: profile.certifications,
+      certificationDetails: profile.certificationDetails,
       projects: profile.projects,
       companyName: job.company,
     });
@@ -514,6 +517,7 @@ export default function ApplyPage() {
       experience: mergedExperience(profile, result, bulletEdits),
       education: profile.education,
       certifications: profile.certifications,
+      certificationDetails: profile.certificationDetails,
       projects: profile.projects,
     });
     try {
@@ -552,6 +556,7 @@ export default function ApplyPage() {
           experience: merged,
           education: profile.education,
           certifications: profile.certifications,
+          certificationDetails: profile.certificationDetails,
           projects: profile.projects,
           companyName: job.company,
           template,

@@ -3,6 +3,20 @@
 import { useState } from "react";
 import { analyzeBullet } from "@/lib/bullet-strength";
 import type { CertificationEntry, ContactInfo, EducationEntry, ProjectEntry, ResumeProfile, WorkExperience } from "@/lib/types";
+import { isUnrecognizedDate } from "@/lib/format-date";
+
+/** Warns when a typed date won't parse, so the user knows autofill may skip
+ * it. Shown under experience/education date rows. */
+function DateHint({ values }: { values: string[] }) {
+  const bad = values.filter((v) => isUnrecognizedDate(v));
+  if (bad.length === 0) return null;
+  return (
+    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+      Autofill may not read {bad.map((v) => `"${v}"`).join(", ")} — use MM/YYYY (e.g. 06/2021) or
+      “Present”.
+    </p>
+  );
+}
 
 function BulletStrengthDot({ bullet }: { bullet: string }) {
   if (!bullet.trim()) return null;
@@ -222,17 +236,18 @@ export function ProfileForm({
               <div className="flex gap-2">
                 <input
                   className={inputClass}
-                  placeholder="Start (2021-06)"
+                  placeholder="Start (MM/YYYY)"
                   value={exp.startDate}
                   onChange={(e) => updateExperience(exp.id, { startDate: e.target.value })}
                 />
                 <input
                   className={inputClass}
-                  placeholder="End (Present)"
+                  placeholder="End (MM/YYYY or Present)"
                   value={exp.endDate}
                   onChange={(e) => updateExperience(exp.id, { endDate: e.target.value })}
                 />
               </div>
+              <DateHint values={[exp.startDate, exp.endDate]} />
             </div>
             <div>
               <label className={labelClass}>Bullets (your real accomplishments — the tailoring engine will only rephrase these, never invent new ones)</label>
@@ -322,13 +337,13 @@ export function ProfileForm({
             <div className="flex gap-2">
               <input
                 className={inputClass}
-                placeholder="Start"
+                placeholder="Start (MM/YYYY)"
                 value={ed.startDate}
                 onChange={(e) => updateEducation(ed.id, { startDate: e.target.value })}
               />
               <input
                 className={inputClass}
-                placeholder="End"
+                placeholder="End (MM/YYYY)"
                 value={ed.endDate}
                 onChange={(e) => updateEducation(ed.id, { endDate: e.target.value })}
               />
@@ -339,6 +354,7 @@ export function ProfileForm({
                 onChange={(e) => updateEducation(ed.id, { gpa: e.target.value })}
               />
             </div>
+            <DateHint values={[ed.startDate, ed.endDate]} />
             <button
               type="button"
               className="text-xs text-rose-600 dark:text-rose-400 sm:col-span-2 text-left"

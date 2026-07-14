@@ -66,17 +66,41 @@ const MONTH_NAMES = [
   "july", "august", "september", "october", "november", "december",
 ];
 
-/** Accepts "2021-06", "06/2021", "June 2021", or bare "2021". */
+function expandTwoDigitYear(yy: string): string {
+  const n = Number(yy);
+  const currentYY = new Date().getFullYear() % 100;
+  // "06" -> 2006, "95" -> 1995 (anything beyond next year is last century).
+  return String(n <= currentYY + 1 ? 2000 + n : 1900 + n);
+}
+
+/**
+ * Parses a wide range of resume date strings into { month?, year } so the
+ * autofill can fill Workday's Month/Year fields. Accepts: "2021-06",
+ * "2021-06-15", "06/2021", "6/2021", "06/21", "June 2021", "Jun 2021",
+ * "Sept. 2019", and bare "2021". Returns null for "Present"/"Current" (the
+ * caller checks the current-role box instead) and anything unrecognized.
+ */
 export function parseDateParts(value: string): { month?: string; year: string } | null {
-  const v = value.trim();
-  let m = v.match(/^(\d{4})[-/.](\d{1,2})$/);
-  if (m) return { year: m[1], month: String(Number(m[2])).padStart(2, "0") };
+  const v = (value ?? "").trim();
+  if (!v || /^(present|current|now|ongoing|to date|n\/?a)$/i.test(v)) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const validMonth = (n: number) => (n >= 1 && n <= 12 ? pad(n) : undefined);
+
+  // 2021-06, 2021/06, or 2021-06-15 (ISO, optional day)
+  let m = v.match(/^(\d{4})[-/.](\d{1,2})(?:[-/.]\d{1,2})?$/);
+  if (m) return { year: m[1], month: validMonth(Number(m[2])) };
+  // 06/2021 or 6-2021
   m = v.match(/^(\d{1,2})[-/.](\d{4})$/);
-  if (m) return { year: m[2], month: String(Number(m[1])).padStart(2, "0") };
-  m = v.match(/^([A-Za-z]+)\.?\s+(\d{4})$/);
+  if (m) return { year: m[2], month: validMonth(Number(m[1])) };
+  // 06/21 (two-digit year)
+  m = v.match(/^(\d{1,2})[-/.](\d{2})$/);
+  if (m) return { year: expandTwoDigitYear(m[2]), month: validMonth(Number(m[1])) };
+  // June 2021 / Jun 2021 / Sept. 2019
+  m = v.match(/^([A-Za-z]{3,})\.?\s+(\d{4})$/);
   if (m) {
-    const idx = MONTH_NAMES.findIndex((name) => name.startsWith(m![1].toLowerCase()));
-    if (idx >= 0) return { year: m[2], month: String(idx + 1).padStart(2, "0") };
+    const abbr = m[1].toLowerCase().slice(0, 3);
+    const idx = MONTH_NAMES.findIndex((name) => name.startsWith(abbr));
+    if (idx >= 0) return { year: m[2], month: pad(idx + 1) };
   }
   m = v.match(/^(\d{4})$/);
   if (m) return { year: m[1] };

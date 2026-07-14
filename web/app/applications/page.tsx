@@ -467,6 +467,7 @@ function ApplicationDetail({
       experience: application.experience,
       education: application.education,
       certifications: application.certifications,
+      certificationDetails: application.certificationDetails,
       projects: application.projects,
       companyName: application.job.company,
     });
@@ -499,6 +500,7 @@ function ApplicationDetail({
           experience: application.experience,
           education: application.education,
           certifications: application.certifications,
+          certificationDetails: application.certificationDetails,
           projects: application.projects,
           companyName: application.job.company,
         }),

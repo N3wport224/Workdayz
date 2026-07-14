@@ -2,10 +2,20 @@
 // box. Mirrors the PDF's section order.
 
 import type { ResumePdfProps } from "./pdf/ResumeDocument";
+import { formatDateRange } from "./format-date";
 
 export function resumeToText(props: ResumePdfProps): string {
-  const { contact, summary, skills, experience, education, certifications, projects } = props;
+  const { contact, summary, skills, experience, education, certifications, certificationDetails, projects } = props;
   const lines: string[] = [];
+  const certLines =
+    certificationDetails?.filter((c) => c.name.trim()).length
+      ? certificationDetails
+          .filter((c) => c.name.trim())
+          .map((c) => {
+            const dates = formatDateRange(c.issueDate ?? "", c.expirationDate ?? "");
+            return `${c.name}${c.issuer ? ` — ${c.issuer}` : ""}${dates ? ` (${dates})` : ""}`;
+          })
+      : certifications;
 
   lines.push(`${contact.firstName} ${contact.lastName}`.trim().toUpperCase());
   const contactBits = [
@@ -28,7 +38,7 @@ export function resumeToText(props: ResumePdfProps): string {
     lines.push("EXPERIENCE");
     for (const exp of experience) {
       lines.push(`${exp.title} — ${exp.company}${exp.location ? `, ${exp.location}` : ""}`);
-      lines.push(`${exp.startDate} - ${exp.endDate}`);
+      lines.push(formatDateRange(exp.startDate, exp.endDate));
       for (const bullet of exp.bullets) lines.push(`- ${bullet}`);
       lines.push("");
     }
@@ -45,13 +55,15 @@ export function resumeToText(props: ResumePdfProps): string {
     lines.push("EDUCATION");
     for (const ed of education) {
       lines.push(
-        `${ed.degree}${ed.fieldOfStudy ? ` in ${ed.fieldOfStudy}` : ""}, ${ed.school} (${ed.startDate} - ${ed.endDate})${ed.gpa ? ` — GPA ${ed.gpa}` : ""}`,
+        `${ed.degree}${ed.fieldOfStudy ? ` in ${ed.fieldOfStudy}` : ""}, ${ed.school} (${formatDateRange(ed.startDate, ed.endDate)})${ed.gpa ? ` — GPA ${ed.gpa}` : ""}`,
       );
     }
     lines.push("");
   }
-  if (certifications.length) {
-    lines.push("CERTIFICATIONS", certifications.join(", "), "");
+  if (certLines.length) {
+    lines.push("CERTIFICATIONS");
+    for (const line of certLines) lines.push(`- ${line}`);
+    lines.push("");
   }
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";

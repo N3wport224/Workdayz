@@ -3,6 +3,7 @@
 
 import { BorderStyle, Document, Packer, Paragraph, TextRun } from "docx";
 import type { ResumePdfProps } from "./pdf/ResumeDocument";
+import { formatDateRange } from "./format-date";
 
 const FONT = "Calibri";
 
@@ -25,7 +26,16 @@ function body(text: string, opts: { bold?: boolean; color?: string; bullet?: boo
 }
 
 export async function resumeToDocx(props: ResumePdfProps): Promise<Buffer> {
-  const { contact, summary, skills, experience, education, certifications, projects } = props;
+  const { contact, summary, skills, experience, education, certifications, certificationDetails, projects } = props;
+  const certLines =
+    certificationDetails?.filter((c) => c.name.trim()).length
+      ? certificationDetails
+          .filter((c) => c.name.trim())
+          .map((c) => {
+            const dates = formatDateRange(c.issueDate ?? "", c.expirationDate ?? "");
+            return `${c.name}${c.issuer ? ` — ${c.issuer}` : ""}${dates ? ` (${dates})` : ""}`;
+          })
+      : certifications;
   const children: Paragraph[] = [];
 
   children.push(
@@ -61,7 +71,7 @@ export async function resumeToDocx(props: ResumePdfProps): Promise<Buffer> {
       children.push(body(`${exp.title} — ${exp.company}`, { bold: true }));
       children.push(
         body(
-          [exp.location, `${exp.startDate} - ${exp.endDate}`].filter(Boolean).join(" | "),
+          [exp.location, formatDateRange(exp.startDate, exp.endDate)].filter(Boolean).join(" | "),
           { color: "333333" },
         ),
       );
@@ -82,7 +92,7 @@ export async function resumeToDocx(props: ResumePdfProps): Promise<Buffer> {
       children.push(body(`${ed.degree}${ed.fieldOfStudy ? `, ${ed.fieldOfStudy}` : ""}`, { bold: true }));
       children.push(
         body(
-          [ed.school, `${ed.startDate} - ${ed.endDate}`, ed.gpa ? `GPA: ${ed.gpa}` : ""]
+          [ed.school, formatDateRange(ed.startDate, ed.endDate), ed.gpa ? `GPA: ${ed.gpa}` : ""]
             .filter(Boolean)
             .join(" | "),
           { color: "333333" },
@@ -90,8 +100,9 @@ export async function resumeToDocx(props: ResumePdfProps): Promise<Buffer> {
       );
     }
   }
-  if (certifications.length) {
-    children.push(heading("Certifications"), body(certifications.join(" | ")));
+  if (certLines.length) {
+    children.push(heading("Certifications"));
+    for (const line of certLines) children.push(body(line, { bullet: true }));
   }
 
   const doc = new Document({

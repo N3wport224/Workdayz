@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import type { ContactInfo, EducationEntry, ProjectEntry, WorkExperience } from "@/lib/types";
+import type { CertificationEntry, ContactInfo, EducationEntry, ProjectEntry, WorkExperience } from "@/lib/types";
+import { formatDateRange } from "@/lib/format-date";
 
 // ATS-safe layouts: single column, standard built-in font, plain text only —
 // no tables, images, text boxes, or multi-column sections that resume
@@ -44,8 +45,19 @@ export interface ResumePdfProps {
   experience: (WorkExperience & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
+  certificationDetails?: CertificationEntry[];
   projects?: ProjectEntry[];
   template?: ResumeTemplate;
+}
+
+/** "CSM — Scrum Alliance (May 2024 – May 2026)" from a structured cert. */
+function certLine(cert: CertificationEntry): string {
+  const dates = formatDateRange(cert.issueDate ?? "", cert.expirationDate ?? "");
+  return [
+    cert.name,
+    cert.issuer ? ` — ${cert.issuer}` : "",
+    dates ? ` (${dates})` : "",
+  ].join("");
 }
 
 export function ResumeDocument({
@@ -55,9 +67,13 @@ export function ResumeDocument({
   experience,
   education,
   certifications,
+  certificationDetails,
   projects,
   template,
 }: ResumePdfProps) {
+  const certs = certificationDetails?.filter((c) => c.name.trim()).length
+    ? certificationDetails.filter((c) => c.name.trim()).map(certLine)
+    : certifications;
   const styles = buildStyles(template === "compact" ? "compact" : "classic");
   const contactParts = [
     contact.email,
@@ -98,7 +114,7 @@ export function ResumeDocument({
                   {exp.title} — {exp.company}
                 </Text>
                 <Text style={styles.entrySubheader}>
-                  {[exp.location, `${exp.startDate} - ${exp.endDate}`]
+                  {[exp.location, formatDateRange(exp.startDate, exp.endDate)]
                     .filter(Boolean)
                     .join(" | ")}
                 </Text>
@@ -122,7 +138,7 @@ export function ResumeDocument({
                   {ed.fieldOfStudy ? `, ${ed.fieldOfStudy}` : ""}
                 </Text>
                 <Text style={styles.entrySubheader}>
-                  {[ed.school, `${ed.startDate} - ${ed.endDate}`, ed.gpa ? `GPA: ${ed.gpa}` : ""]
+                  {[ed.school, formatDateRange(ed.startDate, ed.endDate), ed.gpa ? `GPA: ${ed.gpa}` : ""]
                     .filter(Boolean)
                     .join(" | ")}
                 </Text>
@@ -145,10 +161,14 @@ export function ResumeDocument({
           </View>
         ) : null}
 
-        {certifications.length ? (
+        {certs.length ? (
           <View>
             <Text style={styles.sectionHeading}>Certifications</Text>
-            <Text style={styles.paragraph}>{certifications.join(" | ")}</Text>
+            {certs.map((line, i) => (
+              <Text key={i} style={styles.bullet}>
+                • {line}
+              </Text>
+            ))}
           </View>
         ) : null}
       </Page>

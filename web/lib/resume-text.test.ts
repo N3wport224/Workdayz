@@ -28,8 +28,8 @@ describe("resumeToText", () => {
     expect(text.indexOf("SUMMARY")).toBeLessThan(text.indexOf("SKILLS"));
     expect(text.indexOf("EXPERIENCE")).toBeLessThan(text.indexOf("PROJECTS"));
     expect(text).toContain("- Built dashboards.");
-    expect(text).toContain("BS in Math, UT (2016 - 2020) — GPA 3.8");
+    expect(text).toContain("BS in Math, UT (2016 – 2020) — GPA 3.8");
     expect(text).toContain("Forecast tool: Python model.");
-    expect(text).toContain("CERTIFICATIONS\nPMP");
+    expect(text).toContain("CERTIFICATIONS\n- PMP");
   });
 });

@@ -214,15 +214,22 @@ try {
 
   const dateChecks = await page.evaluate(() => {
     const p = window.WorkdayzTest.parseDateParts;
-    return [
-      JSON.stringify(p("2021-06")) === '{"year":"2021","month":"06"}',
-      JSON.stringify(p("06/2021")) === '{"year":"2021","month":"06"}',
-      JSON.stringify(p("June 2021")) === '{"year":"2021","month":"06"}',
-      JSON.stringify(p("2021")) === '{"year":"2021"}',
-      p("Present") === null,
-    ];
+    return {
+      iso: JSON.stringify(p("2021-06")) === '{"year":"2021","month":"06"}',
+      isoDay: JSON.stringify(p("2021-06-15")) === '{"year":"2021","month":"06"}',
+      mmYYYY: JSON.stringify(p("06/2021")) === '{"year":"2021","month":"06"}',
+      mYYYY: JSON.stringify(p("6/2021")) === '{"year":"2021","month":"06"}',
+      twoDigitYear: JSON.stringify(p("06/21")) === '{"year":"2021","month":"06"}',
+      monthName: JSON.stringify(p("June 2021")) === '{"year":"2021","month":"06"}',
+      monthAbbr: JSON.stringify(p("Jun 2021")) === '{"year":"2021","month":"06"}',
+      sept: JSON.stringify(p("Sept. 2019")) === '{"year":"2019","month":"09"}',
+      yearOnly: JSON.stringify(p("2021")) === '{"year":"2021"}',
+      present: p("Present") === null,
+      current: p("Current") === null,
+      na: p("N/A") === null,
+    };
   });
-  check("parseDateParts formats", dateChecks.every(Boolean), JSON.stringify(dateChecks));
+  check("parseDateParts handles all formats", Object.values(dateChecks).every(Boolean), JSON.stringify(dateChecks));
 
   const nextBtn = await page.$eval('[data-automation-id="bottom-navigation-next-button"]', (el) => el.textContent);
   check("navigation button untouched", nextBtn === "Save and Continue");
