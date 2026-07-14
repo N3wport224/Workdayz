@@ -1,4 +1,5 @@
 import type { AtsScoreBreakdown, ResumeProfile, TailoredResume } from "./types";
+import { isPresent, parseFlexibleDate } from "./format-date";
 
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9+.#\s]/g, " ");
@@ -150,6 +151,25 @@ export function computeAtsScore(
   if (tailored.skills.length < 5) {
     formattingIssues.push(
       "Fewer than 5 skills listed — add more relevant keywords from the job description if truthful.",
+    );
+  }
+
+  // Structural parseability: an ATS that can't find your contact info or read
+  // your dates may drop the data entirely, regardless of keyword match.
+  if (!profile.contact.email.trim() && !profile.contact.phone.trim()) {
+    formattingIssues.push(
+      "No email or phone in your contact info — an ATS can't route your application. Add at least one on the Resume page.",
+    );
+  }
+  const undatedRoles = profile.experience.filter((e) => {
+    const start = (e.startDate ?? "").trim();
+    return !start || (parseFlexibleDate(start) === null && !isPresent(start));
+  }).length;
+  if (profile.experience.length > 0 && undatedRoles > 0) {
+    formattingIssues.push(
+      `${undatedRoles} of ${profile.experience.length} experience entr${
+        profile.experience.length === 1 ? "y has" : "ies have"
+      } a missing or unreadable date — ATS parsers may not read these roles. Use MM/YYYY (e.g. 06/2021).`,
     );
   }
 

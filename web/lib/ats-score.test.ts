@@ -4,7 +4,9 @@ import { emptyProfile } from "./storage";
 import type { ResumeProfile, TailoredResume } from "./types";
 
 function profile(overrides: Partial<ResumeProfile> = {}): ResumeProfile {
-  return { ...emptyProfile, ...overrides };
+  // Default to a routable contact so the structural checks (missing
+  // email/phone, unreadable dates) don't fire unless a test opts in.
+  return { ...emptyProfile, contact: { ...emptyProfile.contact, email: "a@b.c" }, ...overrides };
 }
 
 function tailoredResume(overrides: Partial<TailoredResume> = {}): TailoredResume {
@@ -36,6 +38,53 @@ describe("computeAtsScore", () => {
     expect(result.missingKeywords).toEqual([]);
     expect(result.score).toBe(100);
     expect(result.formattingIssues).toEqual([]);
+  });
+
+  it("flags contact with no email or phone", () => {
+    const result = computeAtsScore(
+      [],
+      tailoredResume(),
+      profile({ contact: { ...emptyProfile.contact } }), // empty email + phone
+    );
+    expect(result.formattingIssues.some((i) => i.includes("An ATS can't route") || i.includes("route your application"))).toBe(true);
+  });
+
+  it("does not flag contact when only a phone is present", () => {
+    const result = computeAtsScore(
+      [],
+      tailoredResume(),
+      profile({ contact: { ...emptyProfile.contact, email: "", phone: "555-0100" } }),
+    );
+    expect(result.formattingIssues.some((i) => i.includes("route your application"))).toBe(false);
+  });
+
+  it("flags experience entries with missing or unreadable dates", () => {
+    const result = computeAtsScore(
+      [],
+      tailoredResume(),
+      profile({
+        experience: [
+          { id: "1", company: "A", title: "T", location: "", startDate: "06/2021", endDate: "Present", bullets: ["x"] },
+          { id: "2", company: "B", title: "T", location: "", startDate: "last summer", endDate: "", bullets: ["x"] },
+          { id: "3", company: "C", title: "T", location: "", startDate: "", endDate: "", bullets: ["x"] },
+        ],
+      }),
+    );
+    expect(result.formattingIssues.some((i) => i.includes("2 of 3 experience entries have a missing or unreadable date"))).toBe(true);
+  });
+
+  it("does not flag experience when all dates are readable", () => {
+    const result = computeAtsScore(
+      [],
+      tailoredResume(),
+      profile({
+        experience: [
+          { id: "1", company: "A", title: "T", location: "", startDate: "2021-06", endDate: "Present", bullets: ["x"] },
+          { id: "2", company: "B", title: "T", location: "", startDate: "Jan 2018", endDate: "05/2021", bullets: ["x"] },
+        ],
+      }),
+    );
+    expect(result.formattingIssues.some((i) => i.includes("unreadable date"))).toBe(false);
   });
 
   it("reports missing keywords that don't appear anywhere in the tailored resume", () => {
