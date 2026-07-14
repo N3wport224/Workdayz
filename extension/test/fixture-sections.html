@@ -54,12 +54,14 @@
       d.innerHTML =
         '<label for="wt' + n + '">Job Title</label><input id="wt' + n + '" type="text" />' +
         '<label for="wc' + n + '">Company</label><input id="wc' + n + '" type="text" />' +
-        '<div data-automation-id="formField-from"><label>From</label>' +
-        '<input id="wfm' + n + '" aria-label="Month" data-automation-id="dateSectionMonth-input" type="text" />' +
-        '<input id="wfy' + n + '" aria-label="Year" data-automation-id="dateSectionYear-input" type="text" /></div>' +
-        '<div data-automation-id="formField-to"><label>To</label>' +
-        '<input id="wtm' + n + '" aria-label="Month" data-automation-id="dateSectionMonth-input" type="text" />' +
-        '<input id="wty' + n + '" aria-label="Year" data-automation-id="dateSectionYear-input" type="text" /></div>' +
+        // Single "MM / YYYY" readonly box each (Xcel's real widget), with the
+        // From/To label on the formField wrapper, not the input.
+        '<div data-automation-id="formField-from"><label>From *</label>' +
+        '<input id="wf' + n + '" placeholder="MM / YYYY" type="text" readonly />' +
+        '<button aria-label="Calendar">cal</button></div>' +
+        '<div data-automation-id="formField-to"><label>To *</label>' +
+        '<input id="wtd' + n + '" placeholder="MM / YYYY" type="text" readonly />' +
+        '<button aria-label="Calendar">cal</button></div>' +
         '<label><input id="wcur' + n + '" type="checkbox" /> I currently work here</label>';
       setTimeout(() => {
         document.getElementById("workPanels").appendChild(d);

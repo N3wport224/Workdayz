@@ -85,23 +85,78 @@ export function parseDateParts(value: string): { month?: string; year: string } 
 const START_DATE_TERMS = ["start date", "from date", "from"];
 const END_DATE_TERMS = ["end date", "to date", "graduation date", "to"];
 
-/**
- * Workday date widgets are usually split Month/Year inputs
- * (dateSectionMonth-input / dateSectionYear-input) under a labeled group.
- * Fills those when present, trying each group alias ("Start Date", "From",
- * ...); returns false so the caller can fall back to a plain text field.
- */
-function fillDateParts(scoped: FillableElement[], groupSynonyms: string[], value: string): boolean {
+/** The field-group container whose label matches a date group ("From"/"To"/
+ * "Start Date"). Workday puts that label on a wrapper ABOVE the actual date
+ * inputs, so a per-input label lookup misses it — find the label, return the
+ * wrapper that holds both it and the inputs. */
+function findDateContainer(panel: HTMLElement, groupSynonyms: string[]): HTMLElement | null {
+  for (const lbl of Array.from(panel.querySelectorAll<HTMLElement>("label, legend"))) {
+    const t = normalizeLower((lbl.textContent ?? "").replace(/\*/g, " "));
+    if (!t) continue;
+    if (!groupSynonyms.some((g) => t === g || t.startsWith(`${g} `))) continue;
+    const container = lbl.closest<HTMLElement>("[data-automation-id]");
+    if (container && container.querySelector("input")) return container;
+    if (lbl.parentElement?.querySelector("input")) return lbl.parentElement as HTMLElement;
+  }
+  return null;
+}
+
+/** Fills the date input(s) inside a group container. Handles a single
+ * "MM / YYYY" box or split Month/Year segments, and — unlike the normal
+ * field path — deliberately writes to READONLY inputs (Workday's date
+ * widgets are readonly + picker; the native value setter still commits and
+ * the change events make the SPA accept it). */
+function fillDateInContainer(container: HTMLElement, value: string): boolean {
   const parsed = parseDateParts(value);
   if (!parsed) return false;
-  for (const groupSynonym of groupSynonyms) {
-    const yearField = findFieldByAllTerms(scoped, [groupSynonym, "year"]);
-    if (!yearField) continue;
-    setFieldValue(yearField, parsed.year);
-    if (parsed.month) {
-      const monthField = findFieldByAllTerms(scoped, [groupSynonym, "month"]);
-      if (monthField) setFieldValue(monthField, parsed.month);
+  const inputs = Array.from(container.querySelectorAll<HTMLInputElement>("input")).filter(
+    (el) => el.type !== "hidden" && !el.disabled && isVisible(el),
+  );
+  if (inputs.length === 0) return false;
+  const mmyyyy = parsed.month ? `${parsed.month}/${parsed.year}` : parsed.year;
+  if (inputs.length === 1) {
+    setFieldValue(inputs[0], mmyyyy);
+    return true;
+  }
+  const attrs = (el: HTMLInputElement) =>
+    `${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("data-automation-id") ?? ""} ${el.getAttribute("placeholder") ?? ""}`;
+  const yearEl = inputs.find((el) => /year|yyyy/i.test(attrs(el)));
+  const monthEl = inputs.find((el) => el !== yearEl && /month|\bmm\b/i.test(attrs(el)));
+  if (yearEl) {
+    setFieldValue(yearEl, parsed.year);
+    if (monthEl && parsed.month) setFieldValue(monthEl, parsed.month);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Fills a date group, trying (1) the labeled group container — the robust
+ * path that also reaches readonly single/segmented Workday date widgets,
+ * (2) split segments whose own label carries the group word, (3) a plain
+ * single field. Returns false if nothing matched.
+ */
+function tryFillDate(panel: HTMLElement, scoped: FillableElement[], groupSynonyms: string[], value: string): boolean {
+  const container = findDateContainer(panel, groupSynonyms);
+  if (container && fillDateInContainer(container, value)) return true;
+
+  const parsed = parseDateParts(value);
+  if (parsed) {
+    for (const groupSynonym of groupSynonyms) {
+      const yearField = findFieldByAllTerms(scoped, [groupSynonym, "year"]);
+      if (!yearField) continue;
+      setFieldValue(yearField, parsed.year);
+      if (parsed.month) {
+        const monthField = findFieldByAllTerms(scoped, [groupSynonym, "month"]);
+        if (monthField) setFieldValue(monthField, parsed.month);
+      }
+      return true;
     }
+  }
+
+  const field = findFieldBySynonyms(scoped, groupSynonyms);
+  if (field) {
+    setFieldValue(field, value);
     return true;
   }
   return false;
@@ -397,14 +452,12 @@ export async function runAutofill(
       const companyCombo = findComboboxBySynonyms(panel, COMPANY_SYNONYMS);
       if (companyCombo) await fillSearchCombobox(companyCombo, entry.company);
     }
-    if (!fillDateParts(scoped, START_DATE_TERMS, entry.startDate)) {
-      fillWithinPanel(panel, scoped, [[START_DATE_TERMS, entry.startDate]]);
-    }
+    tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
     if (isPresentDate(entry.endDate)) {
       const checkbox = findCheckboxBySynonyms(panel, CURRENT_ROLE_SYNONYMS);
       if (checkbox) setCheckbox(checkbox, true);
-    } else if (!fillDateParts(scoped, END_DATE_TERMS, entry.endDate)) {
-      fillWithinPanel(panel, scoped, [[END_DATE_TERMS, entry.endDate]]);
+    } else {
+      tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
     }
     const description = findFieldBySynonyms(scoped, ["role description", "job description", "description"]);
     if (description) setFieldValue(description, entry.bullets.map((b) => `• ${b}`).join("\n"));
@@ -443,12 +496,8 @@ export async function runAutofill(
       [["field of study", "major"], entry.fieldOfStudy],
       [["gpa"], entry.gpa ?? ""],
     ]);
-    if (!fillDateParts(scoped, START_DATE_TERMS, entry.startDate)) {
-      fillWithinPanel(panel, scoped, [[START_DATE_TERMS, entry.startDate]]);
-    }
-    if (!fillDateParts(scoped, END_DATE_TERMS, entry.endDate)) {
-      fillWithinPanel(panel, scoped, [[END_DATE_TERMS, entry.endDate]]);
-    }
+    tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
+    tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
   });
   if (educationResult.filledCount) summary.filled.push(`${educationResult.filledCount} education panel(s)`);
   if (educationResult.remaining) {

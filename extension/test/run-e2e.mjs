@@ -305,12 +305,13 @@ try {
   check("relabeled Add Another: work panel 3 filled", (await sval("#wt3")) === "Analyst", `wt3="${await sval("#wt3")}"`);
   check("all three work panels reported", sSummary.filled.some((s) => s.includes("3 work experience panel")), JSON.stringify(sSummary.filled));
 
-  // Dates labeled "From"/"To" (Xcel wording), not "Start Date"/"End Date".
-  check('"From" date filled (panel 1 start month)', (await sval("#wfm1")) === "06", `wfm1="${await sval("#wfm1")}"`);
-  check('"From" date filled (panel 1 start year)', (await sval("#wfy1")) === "2021", `wfy1="${await sval("#wfy1")}"`);
-  check("Present -> current-role checkbox checked, To left empty", (await sectionsPage.$eval("#wcur1", (el) => el.checked)) && (await sval("#wty1")) === "");
-  check('"To" date filled (panel 2 end month)', (await sval("#wtm2")) === "05", `wtm2="${await sval("#wtm2")}"`);
-  check('"To" date filled (panel 2 end year)', (await sval("#wty2")) === "2021", `wty2="${await sval("#wty2")}"`);
+  // Dates: single READONLY "MM / YYYY" boxes labeled "From *"/"To *" on the
+  // wrapper (Xcel's real widget) — findFillableFields excludes readonly, so
+  // this only works via the group-container path.
+  check('readonly "From" box filled MM/YYYY', (await sval("#wf1")) === "06/2021", `wf1="${await sval("#wf1")}"`);
+  check("Present -> current-role checkbox checked, To left empty", (await sectionsPage.$eval("#wcur1", (el) => el.checked)) && (await sval("#wtd1")) === "");
+  check('readonly "To" box filled MM/YYYY', (await sval("#wtd2")) === "05/2021", `wtd2="${await sval("#wtd2")}"`);
+  check('panel 2 "From" box filled', (await sval("#wf2")) === "01/2018", `wf2="${await sval("#wf2")}"`);
 
   // Education: School is a type-ahead combobox, Degree a listbox — panels must
   // still be detected/grown and both controls committed.
