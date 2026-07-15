@@ -72,6 +72,18 @@ export function formatDateRange(start: string, end: string): string {
   return s || e;
 }
 
+/** Canonical "MM/YYYY" (or "YYYY" when only a year is known, "Present" for
+ * present) — the format the profile form and autofill expect. Leaves
+ * unparseable text unchanged. Used to normalize imported dates. */
+export function toMMYYYY(raw: string): string {
+  const v = (raw ?? "").trim();
+  if (!v) return "";
+  if (isPresent(v)) return "Present";
+  const p = parseFlexibleDate(v);
+  if (!p) return v;
+  return p.month ? `${String(p.month).padStart(2, "0")}/${p.year}` : String(p.year);
+}
+
 /** True when a non-empty date string can't be parsed — surfaced in the
  * profile form so the user knows autofill may not fill it. */
 export function isUnrecognizedDate(raw: string): boolean {

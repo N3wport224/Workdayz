@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateRange, formatMonthYear, isUnrecognizedDate, parseFlexibleDate } from "./format-date";
+import { formatDateRange, formatMonthYear, isUnrecognizedDate, parseFlexibleDate, toMMYYYY } from "./format-date";
 
 describe("parseFlexibleDate", () => {
   it("parses the formats the autofill accepts", () => {
@@ -41,6 +41,23 @@ describe("formatMonthYear / formatDateRange", () => {
     expect(formatDateRange("2021-06", "Present")).toBe("Jun 2021 – Present");
     expect(formatDateRange("2021-06", "")).toBe("Jun 2021");
     expect(formatDateRange("", "")).toBe("");
+  });
+});
+
+describe("toMMYYYY", () => {
+  it("normalizes any parseable date to MM/YYYY", () => {
+    expect(toMMYYYY("2019-01")).toBe("01/2019");
+    expect(toMMYYYY("2025-05")).toBe("05/2025");
+    expect(toMMYYYY("Jan 2018")).toBe("01/2018");
+    expect(toMMYYYY("8/2022")).toBe("08/2022");
+    expect(toMMYYYY("2021")).toBe("2021");
+    expect(toMMYYYY("Present")).toBe("Present");
+    expect(toMMYYYY("")).toBe("");
+  });
+
+  it("leaves already-MM/YYYY and unparseable text unchanged", () => {
+    expect(toMMYYYY("05/2024")).toBe("05/2024");
+    expect(toMMYYYY("Summer 2022")).toBe("Summer 2022");
   });
 });
 
