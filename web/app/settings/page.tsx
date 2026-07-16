@@ -3,11 +3,56 @@
 import { useEffect, useState } from "react";
 import { loadSettings, saveSettings, exportAllData, importAllData, wipeAllData } from "@/lib/storage";
 import type { ExtensionSettings } from "@/lib/storage";
+import { buildFullBackup, isFullBackup, restoreFullBackup } from "@/lib/full-backup";
+import { encryptBackup, decryptBackup, isEncryptedBackup } from "@/lib/crypto-backup";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<ExtensionSettings>({ anthropicKey: "", model: "", autoSyncExtension: true });
   const [importJson, setImportJson] = useState("");
   const [message, setMessage] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [encryptedImport, setEncryptedImport] = useState("");
+
+  /** Item 10: passphrase-encrypted full backup (AES-GCM via crypto-backup). */
+  const handleEncryptedExport = async () => {
+    if (passphrase.length < 8) {
+      setMessage("Use a passphrase of at least 8 characters.");
+      return;
+    }
+    try {
+      const backup = await encryptBackup(JSON.stringify(buildFullBackup()), passphrase);
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `workdayz-backup-${new Date().toISOString().slice(0, 10)}.encrypted.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setMessage("Encrypted backup downloaded. Keep the passphrase — it cannot be recovered.");
+    } catch {
+      setMessage("Encryption failed — your browser may not support WebCrypto here.");
+    }
+  };
+
+  const handleEncryptedImport = async () => {
+    try {
+      const parsed = JSON.parse(encryptedImport);
+      if (!isEncryptedBackup(parsed)) {
+        setMessage("That isn't an encrypted Workdayz backup.");
+        return;
+      }
+      const plaintext = await decryptBackup(parsed, passphrase);
+      const backup = JSON.parse(plaintext);
+      if (!isFullBackup(backup)) {
+        setMessage("Decrypted, but the contents aren't a Workdayz backup.");
+        return;
+      }
+      const restored = restoreFullBackup(backup);
+      setMessage(`Restored ${restored} data item(s). Reloading…`);
+      setTimeout(() => window.location.reload(), 1200);
+    } catch {
+      setMessage("Decryption failed — wrong passphrase or corrupted file.");
+    }
+  };
 
   useEffect(() => {
     setSettings(loadSettings());
@@ -113,6 +158,43 @@ export default function SettingsPage() {
           <button onClick={handleImport} disabled={!importJson.trim()} className="btn btn-secondary mt-2">
             Import
           </button>
+        </div>
+
+        {/* Encrypted backup (passphrase-protected, AES-GCM in your browser) */}
+        <div className="mt-6 pt-4 border-t border-gray-700">
+          <h3 className="font-medium mb-2">🔐 Encrypted backup</h3>
+          <p className="text-sm text-gray-400 mb-3">
+            Downloads everything (profile, applications, settings) encrypted with a passphrase —
+            safe to store in cloud drives. Encryption happens entirely in your browser.
+          </p>
+          <label>Passphrase (min 8 characters — cannot be recovered if lost)</label>
+          <input
+            type="password"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder="Choose a strong passphrase…"
+          />
+          <div className="flex flex-wrap gap-3 mt-3">
+            <button onClick={handleEncryptedExport} disabled={passphrase.length < 8} className="btn btn-secondary">
+              ⬇ Download encrypted backup
+            </button>
+          </div>
+          <div className="mt-4">
+            <label>Restore from encrypted backup</label>
+            <textarea
+              value={encryptedImport}
+              onChange={(e) => setEncryptedImport(e.target.value)}
+              placeholder="Paste the contents of your .encrypted.json backup file…"
+              rows={3}
+            />
+            <button
+              onClick={handleEncryptedImport}
+              disabled={!encryptedImport.trim() || passphrase.length < 8}
+              className="btn btn-secondary mt-2"
+            >
+              🔓 Decrypt &amp; restore
+            </button>
+          </div>
         </div>
       </div>
 

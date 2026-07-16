@@ -365,6 +365,13 @@
           </div>
           <textarea id="importArea" rows="2" style="display: none; margin-top: 6px" placeholder='Paste exported rules JSON, then click "Import" again'></textarea>
           <div id="rulesFeedback" class="feedback hidden"></div>
+          <div class="divider"></div>
+          <label for="templateName">Templates — save the global rules above as a named preset</label>
+          <div style="display: flex; gap: 6px">
+            <input id="templateName" type="text" placeholder="e.g. Standard answers" />
+            <button id="saveTemplateBtn" class="btn btn-secondary btn-sm" style="width: auto; flex-shrink: 0">Save as template</button>
+          </div>
+          <ul class="detail-list" id="templatesList" style="margin-top: 6px"></ul>
         </div>
       </div>
       </div><!-- /rulesPanel -->
@@ -433,6 +440,7 @@
         <div class="summary-grid" id="usageStats"></div>
         <button id="auditBtn" class="btn btn-secondary btn-sm" style="margin-top: 8px">Run self-check</button>
         <ul class="audit-list" id="auditResults"></ul>
+        <button id="resetSettingsBtn" class="btn btn-danger btn-sm" style="margin-top: 8px">Reset settings to defaults</button>
       </div>
       </div><!-- /settingsPanel -->
     </div>

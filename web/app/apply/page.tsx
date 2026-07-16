@@ -5,6 +5,7 @@ import { loadProfile, loadSettings, saveApplication } from "@/lib/storage";
 import { sendAutofillPackage, getBridgeStatus } from "@/lib/extension-bridge";
 import { segmentByKeywords } from "@/lib/highlight-keywords";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
+import { ExportButtons, BulletsCard, InterviewPrepCard, OutreachCard, QuestionsCard } from "@/components/ResultToolkit";
 import type { ResumeProfile, JobPosting, TailoredApplication, TailoredVariant, AtsBreakdown } from "@/lib/types";
 
 interface TailorResult {
@@ -253,6 +254,28 @@ export default function ApplyPage() {
 
   const scoreColor = (s: number) => s >= 80 ? "text-green-400" : s >= 60 ? "text-amber-400" : "text-red-400";
 
+  /** Job posting object for the toolkit cards (prep/outreach/questions). */
+  const jobForCards = (): JobPosting => ({
+    title: jobTitle || "Position",
+    company: jobCompany || "Company",
+    location: jobLocation || "",
+    description: jobDescription,
+    sourceUrl: jobUrl || undefined,
+  });
+
+  /** Experience in the {title, company, bullets} shape the LLM routes expect. */
+  const experienceForCards = () =>
+    (profile?.experience ?? []).map((e) => ({ title: e.title, company: e.company, bullets: e.bullets }));
+
+  /** Item 5: a rewritten bullet replaces the tailored text in the result. */
+  const handleBulletChange = (id: string, newText: string) => {
+    setResult((prev) =>
+      prev
+        ? { ...prev, bullets: prev.bullets.map((b) => (b.id === id ? { ...b, tailored: newText } : b)) }
+        : prev,
+    );
+  };
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">🎯 Tailor Application</h1>
@@ -475,6 +498,16 @@ export default function ApplyPage() {
             </div>
           </div>
 
+          {/* Tailored bullets: diff + strength + rewrite (items 5, 8, 28-lite, 29-lite) */}
+          <BulletsCard
+            bullets={result.bullets}
+            profile={profile!}
+            jobTitle={jobTitle}
+            jobDescription={jobDescription}
+            onBulletChange={handleBulletChange}
+            onStatus={(msg, isError) => (isError ? setError(msg) : setStatusMessage(msg))}
+          />
+
           {/* Fit Analysis */}
           {result.fitAnalysis && (
             <div className="card">
@@ -509,6 +542,22 @@ export default function ApplyPage() {
             </div>
           </div>
 
+          {/* Interview prep, outreach, question drafting (items 4, 6, 7) */}
+          <InterviewPrepCard
+            job={jobForCards()}
+            summary={result.summary}
+            skills={result.skills}
+            experience={experienceForCards()}
+            gaps={result.fitAnalysis?.gaps}
+          />
+          <OutreachCard
+            job={jobForCards()}
+            summary={result.summary}
+            skills={result.skills}
+            experience={experienceForCards()}
+          />
+          <QuestionsCard job={jobForCards()} profile={profile!} apiKey={apiKey} />
+
           {/* Actions */}
           <div className="card">
             <h2 className="font-semibold mb-3">Actions</h2>
@@ -538,6 +587,18 @@ export default function ApplyPage() {
               >
                 {getBridgeStatus() === "detected" ? "📤 Send to extension" : "🔌 Extension not detected"}
               </button>
+              {(() => {
+                const chosen = resolveResumeChoice();
+                return chosen ? (
+                  <ExportButtons
+                    profile={profile!}
+                    chosen={chosen}
+                    jobTitle={jobTitle}
+                    jobCompany={jobCompany}
+                    onStatus={(msg, isError) => (isError ? setError(msg) : setStatusMessage(msg))}
+                  />
+                ) : null;
+              })()}
               <button
                 onClick={() => {
                   // Export resume text for the SELECTED resume source

@@ -1,5 +1,5 @@
 import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
-import { getSettings, updateSettings, getUsageStats, type ExtensionSettings } from "../content/features";
+import { getSettings, updateSettings, resetSettings, getUsageStats, saveTemplate, loadTemplates, deleteTemplate, type ExtensionSettings } from "../content/features";
 import { runAudit } from "../content/feature-audit";
 
 // Enhanced results (autofill-v2) are a superset of AutofillRunSummary.
@@ -471,6 +471,74 @@ async function initSettings() {
     /* keep the static default */
   }
 }
+
+// --- Fill templates (item 11): save/apply/delete named rule presets ---
+const templateNameInput = document.getElementById("templateName") as HTMLInputElement;
+const saveTemplateBtn = document.getElementById("saveTemplateBtn") as HTMLButtonElement;
+const templatesList = document.getElementById("templatesList") as HTMLUListElement;
+const resetSettingsBtn = document.getElementById("resetSettingsBtn") as HTMLButtonElement;
+
+async function renderTemplates() {
+  const templates = await loadTemplates();
+  if (templates.length === 0) {
+    templatesList.innerHTML = `<li style="opacity:.6">No templates saved yet.</li>`;
+    return;
+  }
+  templatesList.innerHTML = "";
+  for (const t of templates) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = `${t.name} (${t.rules.length} rule${t.rules.length === 1 ? "" : "s"})`;
+    name.style.flex = "1";
+    const applyBtn = document.createElement("button");
+    applyBtn.className = "btn btn-secondary btn-sm";
+    applyBtn.style.width = "auto";
+    applyBtn.textContent = "Apply";
+    applyBtn.addEventListener("click", async () => {
+      customRulesInput.value = rulesToLines(t.rules);
+      await chrome.storage.local.set({ [STORAGE_KEYS.customRules]: t.rules });
+      showFeedback(rulesFeedback, `Applied template "${t.name}" — its rules are now the global rules.`, "success");
+    });
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn btn-danger btn-sm";
+    delBtn.style.width = "auto";
+    delBtn.textContent = "✕";
+    delBtn.title = "Delete template";
+    delBtn.addEventListener("click", async () => {
+      await deleteTemplate(t.name);
+      renderTemplates();
+    });
+    li.append(name, applyBtn, delBtn);
+    templatesList.appendChild(li);
+  }
+}
+
+saveTemplateBtn.addEventListener("click", async () => {
+  const name = templateNameInput.value.trim().slice(0, 40);
+  if (!name) {
+    showFeedback(rulesFeedback, "Give the template a name first.", "warning");
+    return;
+  }
+  const rules = parseRuleLines(customRulesInput.value);
+  if (rules.length === 0) {
+    showFeedback(rulesFeedback, "No rules to save — add some global rules above first.", "warning");
+    return;
+  }
+  await deleteTemplate(name); // saving under an existing name replaces it
+  await saveTemplate(name, rules);
+  templateNameInput.value = "";
+  showFeedback(rulesFeedback, `Saved template "${name}".`, "success");
+  renderTemplates();
+});
+
+// --- Item 12: reset all extension settings to defaults ---
+resetSettingsBtn.addEventListener("click", async () => {
+  await resetSettings();
+  showFeedback(settingsFeedback, "Settings reset to defaults.", "success");
+  window.location.reload();
+});
+
+renderTemplates();
 
 auditBtn.addEventListener("click", async () => {
   auditBtn.disabled = true;
