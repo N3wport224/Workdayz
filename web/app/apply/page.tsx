@@ -36,6 +36,10 @@ export default function ApplyPage() {
   const [hasServerKey, setHasServerKey] = useState(true); // optimistic until checked, so we don't flash a false error
   const [showHighlights, setShowHighlights] = useState(false);
   const [copiedMissing, setCopiedMissing] = useState(false);
+  // Which resume feeds "Send to extension" / exports: the tailored resume by
+  // default, a variant, or the untailored base profile. "tailored" | "profile"
+  // | a variant id.
+  const [resumeChoice, setResumeChoice] = useState("tailored");
 
   useEffect(() => {
     const p = loadProfile();
@@ -173,8 +177,51 @@ export default function ApplyPage() {
     }
   };
 
+  /** Resolves the resume the dropdown points at. Defaults to the tailored
+   * resume; a variant or the untailored base profile are explicit opt-ins. */
+  const resolveResumeChoice = () => {
+    if (!profile) return null;
+    if (resumeChoice === "profile") {
+      return {
+        kind: "profile" as const,
+        label: "Base profile (untailored)",
+        summary: profile.summary,
+        skills: profile.skills,
+        bullets: [] as { id: string; original: string; tailored: string }[],
+        coverLetter: "",
+        atsScore: 0,
+      };
+    }
+    if (!result) return null;
+    if (resumeChoice !== "tailored") {
+      const v = result.variants.find((variant) => variant.id === resumeChoice);
+      if (v) {
+        return {
+          kind: "variant" as const,
+          label: `Variant: ${v.label} (ATS ${v.atsScore})`,
+          summary: v.tailoredSummary,
+          skills: v.tailoredSkills,
+          bullets: v.tailoredBullets,
+          coverLetter: v.coverLetter,
+          atsScore: v.atsScore,
+        };
+      }
+    }
+    return {
+      kind: "tailored" as const,
+      label: `Tailored resume (ATS ${result.atsScore})`,
+      summary: result.summary,
+      skills: result.skills,
+      bullets: result.bullets,
+      coverLetter: result.coverLetter,
+      atsScore: result.atsScore,
+    };
+  };
+
   const sendToExtension = () => {
     if (!profile || !result) return;
+    const chosen = resolveResumeChoice();
+    if (!chosen) return;
     const job: JobPosting = {
       title: jobTitle || "Position",
       company: jobCompany || "Company",
@@ -187,20 +234,21 @@ export default function ApplyPage() {
       createdAt: new Date().toISOString(),
       job,
       contact: profile.contact,
-      summary: result.summary,
-      skills: result.skills,
+      summary: chosen.summary,
+      skills: chosen.skills,
       experience: profile.experience,
       education: profile.education,
       certifications: profile.certifications.map((c) => c.name),
       certificationDetails: profile.certifications,
-      coverLetterText: result.coverLetter,
+      resumeSource: { kind: chosen.kind, label: chosen.label },
+      coverLetterText: chosen.coverLetter,
       resumePdfBase64: "",
       resumeFileName: `resume-${job.company?.toLowerCase().replace(/\s+/g, "-") ?? "position"}.pdf`,
       coverLetterPdfBase64: "",
       coverLetterFileName: `cover-letter-${job.company?.toLowerCase().replace(/\s+/g, "-") ?? "position"}.pdf`,
-      atsScore: result.atsScore,
+      atsScore: chosen.atsScore,
     });
-    setStatusMessage("✅ Sent to extension! Open the Workday application form and click Autofill.");
+    setStatusMessage(`✅ Sent to extension using ${chosen.label}. Open the Workday application form and click Autofill.`);
   };
 
   const scoreColor = (s: number) => s >= 80 ? "text-green-400" : s >= 60 ? "text-amber-400" : "text-red-400";
@@ -464,6 +512,24 @@ export default function ApplyPage() {
           {/* Actions */}
           <div className="card">
             <h2 className="font-semibold mb-3">Actions</h2>
+            <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <label htmlFor="resumeChoice" className="text-gray-400">Resume to use:</label>
+              <select
+                id="resumeChoice"
+                value={resumeChoice}
+                onChange={(e) => setResumeChoice(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm"
+              >
+                <option value="tailored">Tailored resume (recommended)</option>
+                {result.variants.map((v) => (
+                  <option key={v.id} value={v.id}>Variant: {v.label} (ATS {v.atsScore})</option>
+                ))}
+                <option value="profile">Base profile (untailored)</option>
+              </select>
+              <span className="px-2 py-0.5 rounded-full text-xs bg-blue-900/40 text-blue-300 border border-blue-700/40">
+                Using: {resolveResumeChoice()?.label ?? "—"}
+              </span>
+            </div>
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={sendToExtension}
@@ -474,13 +540,15 @@ export default function ApplyPage() {
               </button>
               <button
                 onClick={() => {
-                  // Export resume text
+                  // Export resume text for the SELECTED resume source
+                  const chosen = resolveResumeChoice();
+                  if (!chosen) return;
                   const text = renderResumeText(profile!, {
-                    summary: result.summary,
-                    skills: result.skills,
-                    bullets: result.bullets,
+                    summary: chosen.summary,
+                    skills: chosen.skills,
+                    bullets: chosen.bullets,
                   });
-                  navigator.clipboard.writeText(text).then(() => setStatusMessage("Resume text copied!"));
+                  navigator.clipboard.writeText(text).then(() => setStatusMessage(`Resume text copied (${chosen.label}).`));
                 }}
                 className="btn btn-secondary"
               >
@@ -488,16 +556,19 @@ export default function ApplyPage() {
               </button>
               <button
                 onClick={() => {
+                  // The base profile has no tailored cover letter — fall back
+                  // to the main tailored one rather than copying nothing.
+                  const chosen = resolveResumeChoice();
                   navigator.clipboard.writeText(
                     renderCoverLetterText({
                       id: "",
                       createdAt: "",
                       job: { title: jobTitle || "", company: jobCompany || "", location: jobLocation || "", description: jobDescription },
                       profile: profile!,
-                      tailoredSummary: result.summary,
-                      tailoredSkills: result.skills,
-                      tailoredBullets: result.bullets,
-                      coverLetter: result.coverLetter,
+                      tailoredSummary: chosen?.summary ?? result.summary,
+                      tailoredSkills: chosen?.skills ?? result.skills,
+                      tailoredBullets: chosen?.bullets ?? result.bullets,
+                      coverLetter: chosen?.coverLetter || result.coverLetter,
                       atsScore: result.atsScore,
                       atsBreakdown: result.atsBreakdown,
                       status: "draft",

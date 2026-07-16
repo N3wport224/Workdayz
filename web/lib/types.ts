@@ -59,6 +59,14 @@ export interface JobPosting {
   sourceUrl?: string;
 }
 
+/** Which resume a package was built from — displayed by the web app, the
+ * extension popup, and the on-page widget so the user always knows exactly
+ * what data is about to be filled. */
+export interface ResumeSource {
+  kind: "tailored" | "variant" | "profile";
+  label: string;
+}
+
 export interface AutofillPackage {
   version: 1;
   createdAt: string;
@@ -70,6 +78,7 @@ export interface AutofillPackage {
   education: EducationEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];
+  resumeSource?: ResumeSource;
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;

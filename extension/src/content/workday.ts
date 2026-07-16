@@ -66,8 +66,33 @@ function packageFromProfile(profile: BaseProfile): AutofillPackage {
   };
 }
 
-/** Prefer the job-specific tailored package; fall back to the base profile. */
+/** The popup's "Resume source" dropdown: "tailored" (default — job package
+ * first, base profile fallback) or "profile" (always the base profile). */
+async function getFillSourcePreference(): Promise<"tailored" | "profile"> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.fillSource);
+    return data[STORAGE_KEYS.fillSource] === "profile" ? "profile" : "tailored";
+  } catch {
+    return "tailored";
+  }
+}
+
+/** Human name for what's about to be filled — shown in every status line so
+ * the user always knows which resume the data comes from. */
+function sourceName(source: { pkg: AutofillPackage; tailored: boolean }): string {
+  if (!source.tailored) return "Base profile";
+  return source.pkg.resumeSource?.label ?? "Tailored resume";
+}
+
+/** Resolve what to fill from, honoring the popup preference. Default: the
+ * job-specific tailored package, falling back to the base profile. */
 async function getFillSource(): Promise<{ pkg: AutofillPackage; tailored: boolean } | null> {
+  const preference = await getFillSourcePreference();
+  if (preference === "profile") {
+    const { profile } = await sendMessage<{ profile: BaseProfile | null }>({ type: "GET_PROFILE" });
+    if (profile) return { pkg: packageFromProfile(profile), tailored: false };
+    // No profile synced yet — fall through to the package rather than dead-end.
+  }
   const { pkg } = await sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" });
   if (pkg) return { pkg, tailored: true };
   const { profile } = await sendMessage<{ profile: BaseProfile | null }>({ type: "GET_PROFILE" });
@@ -151,8 +176,8 @@ async function runAutofillNow(widget: import("./widget").Widget) {
   }
   widget.setStatus(
     source.tailored
-      ? `Filling from "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100)...`
-      : "Filling from your base profile...",
+      ? `Filling from ${sourceName(source)} — "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100)...`
+      : "Filling from your Base profile...",
   );
 
   // Show progress for each section
@@ -206,8 +231,8 @@ function initApplicationFormWidget() {
       source === null
         ? "Nothing to fill from yet — save your resume profile in the Workdayz web app first."
         : source.tailored
-          ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}`
-          : `Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}`,
+          ? `Ready — using ${sourceName(source)}: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}`
+          : `Ready — using your Base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}`,
     );
     // Opt-in setting: fill as soon as an application step appears — but only
     // if THIS page hasn't been filled before (step memory prevents re-fill

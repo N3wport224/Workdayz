@@ -35,6 +35,8 @@ const usageStatsGrid = document.getElementById("usageStats") as HTMLDivElement;
 const auditBtn = document.getElementById("auditBtn") as HTMLButtonElement;
 const auditResults = document.getElementById("auditResults") as HTMLUListElement;
 const timeoutInput = document.getElementById("setTimeout") as HTMLInputElement;
+const fillSourceSelect = document.getElementById("fillSourceSelect") as HTMLSelectElement;
+const fillSourceHint = document.getElementById("fillSourceHint") as HTMLDivElement;
 
 // Feature toggles → ExtensionSettings keys (single source of truth in
 // content/features.ts; the popup just binds UI to it).
@@ -85,6 +87,26 @@ function escapeHtml(s: string): string {
   return div.innerHTML;
 }
 
+/** Explains exactly which resume the NEXT autofill will pull data from, so
+ * there's never any guessing about the fill source. */
+function describeFillSource(
+  choice: string,
+  pkg: AutofillPackage | undefined,
+  profile: BaseProfile | undefined,
+): string {
+  if (choice === "profile") {
+    if (profile) return `Next autofill uses: Base profile — ${profile.contact.firstName} ${profile.contact.lastName}.`;
+    if (pkg) return "Base profile isn't synced yet — will fall back to the tailored package.";
+    return "Base profile isn't synced yet — save your resume in the web app first.";
+  }
+  if (pkg) {
+    const label = pkg.resumeSource?.label ?? "Tailored resume";
+    return `Next autofill uses: ${label} — "${pkg.job.title}" at ${pkg.job.company}.`;
+  }
+  if (profile) return "No tailored package yet — will fill from your Base profile.";
+  return "Nothing to fill from yet — tailor a job or save your profile in the web app.";
+}
+
 async function init() {
   const stored = await chrome.storage.local.get([
     STORAGE_KEYS.webAppOrigin,
@@ -93,6 +115,7 @@ async function init() {
     STORAGE_KEYS.customRules,
     STORAGE_KEYS.hearAboutUs,
     STORAGE_KEYS.fillHistory,
+    STORAGE_KEYS.fillSource,
   ]);
   const origin = (stored[STORAGE_KEYS.webAppOrigin] as string | undefined) ?? "http://localhost:3000";
   webAppUrlInput.value = origin;
@@ -112,7 +135,8 @@ async function init() {
   const pkg = stored[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined;
   if (pkg) {
     const pkgLabel = `${escapeHtml(pkg.job.title)} at ${escapeHtml(pkg.job.company)}`;
-    const pkgDetail = `ATS ${pkg.atsScore}/100 · generated ${new Date(pkg.createdAt).toLocaleString()}`;
+    const sourceLabel = pkg.resumeSource?.label ?? "Tailored resume";
+    const pkgDetail = `${sourceLabel} · ATS ${pkg.atsScore}/100 · generated ${new Date(pkg.createdAt).toLocaleString()}`;
     packageStatus.innerHTML = buildStatusRow("✓", "ready", pkgLabel, pkgDetail);
 
     // Summary grid
@@ -141,6 +165,12 @@ async function init() {
   } else {
     profileStatus.innerHTML = buildStatusRow("!", "empty", "No profile synced", "Save your resume on the web app's Resume page with this extension connected.");
   }
+
+  // Resume source dropdown: default = tailored package; persisted so the
+  // content script honors it on every fill.
+  fillSourceSelect.value =
+    (stored[STORAGE_KEYS.fillSource] as string | undefined) === "profile" ? "profile" : "tailored";
+  fillSourceHint.textContent = describeFillSource(fillSourceSelect.value, pkg, profile);
 
   hearAboutUsInput.value = (stored[STORAGE_KEYS.hearAboutUs] as string | undefined) ?? "";
   const rules = (stored[STORAGE_KEYS.customRules] as CustomFillRule[] | undefined) ?? [];
@@ -282,6 +312,16 @@ autofillBtn.addEventListener("click", async () => {
   }
   autofillBtn.disabled = false;
   autofillBtn.textContent = "▶ Autofill this page";
+});
+
+fillSourceSelect.addEventListener("change", async () => {
+  await chrome.storage.local.set({ [STORAGE_KEYS.fillSource]: fillSourceSelect.value });
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.autofillPackage, STORAGE_KEYS.baseProfile]);
+  fillSourceHint.textContent = describeFillSource(
+    fillSourceSelect.value,
+    stored[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined,
+    stored[STORAGE_KEYS.baseProfile] as BaseProfile | undefined,
+  );
 });
 
 saveRulesBtn.addEventListener("click", async () => {

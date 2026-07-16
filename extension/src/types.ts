@@ -51,6 +51,13 @@ export interface JobPosting {
   sourceUrl?: string;
 }
 
+/** Which resume a package was built from — mirrored from web/lib/types.ts.
+ * Shown in the popup and widget so the user always knows the fill source. */
+export interface ResumeSource {
+  kind: "tailored" | "variant" | "profile";
+  label: string;
+}
+
 export interface AutofillPackage {
   version: 1;
   createdAt: string;
@@ -62,6 +69,7 @@ export interface AutofillPackage {
   education: EducationEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];
+  resumeSource?: ResumeSource;
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;
@@ -106,6 +114,9 @@ export const STORAGE_KEYS = {
   /** Record<pageKey, { at: string; filled: number }> — which application
    * pages have already been autofilled (capped, most recent kept). */
   fillHistory: "workdayz.fillHistory",
+  /** "tailored" (default: job package first, base profile fallback) or
+   * "profile" (always fill from the base profile). Set from the popup. */
+  fillSource: "workdayz.fillSource",
   /** Active autofill session tracking */
   activeSession: "workdayz.activeSession",
   /** Local usage analytics */

@@ -114,7 +114,7 @@
       .btn-sm { padding: 6px 10px; font-size: 11px; }
       .btn-group { display: flex; gap: 6px; }
       .btn-group .btn { flex: 1; }
-      input, textarea {
+      input, textarea, select {
         width: 100%;
         box-sizing: border-box;
         padding: 7px 9px;
@@ -126,7 +126,7 @@
         color: var(--text);
         transition: border-color 0.15s;
       }
-      input:focus, textarea:focus {
+      input:focus, textarea:focus, select:focus {
         outline: none;
         border-color: var(--primary);
         box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
@@ -331,7 +331,13 @@
       <!-- Autofill Actions -->
       <div class="card">
         <div class="card-title">Actions</div>
-        <button id="autofillBtn" class="btn btn-primary">▶ Autofill this page</button>
+        <label for="fillSourceSelect">Resume source</label>
+        <select id="fillSourceSelect">
+          <option value="tailored">Tailored resume (recommended)</option>
+          <option value="profile">Base profile only</option>
+        </select>
+        <div id="fillSourceHint" class="feedback info" style="margin-top: 6px"></div>
+        <button id="autofillBtn" class="btn btn-primary" style="margin-top: 8px">▶ Autofill this page</button>
         <div id="autofillFeedback" class="feedback hidden"></div>
         <div id="autofillDetails" class="collapsible-content"></div>
         <div class="btn-group" style="margin-top: 8px">
