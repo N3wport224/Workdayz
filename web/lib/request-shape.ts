@@ -30,7 +30,7 @@ export function shapeProfile(profile: ResumeProfile): ResumeProfile {
     ...profile,
     summary: str(profile.summary),
     skills: strArr(profile.skills),
-    certifications: strArr(profile.certifications),
+    certifications: Array.isArray(profile.certifications) ? profile.certifications : [],
     experience: Array.isArray(profile.experience)
       ? profile.experience.map((e) => ({ ...e, bullets: strArr(e?.bullets) }))
       : [],

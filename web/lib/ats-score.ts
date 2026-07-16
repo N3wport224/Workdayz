@@ -91,7 +91,7 @@ export function scoreResume(
     ...originalProfile.skills,
     ...originalProfile.experience.flatMap((e) => [e.title, e.company, ...e.bullets]),
     ...originalProfile.education.flatMap((e) => [e.school, e.degree, e.fieldOfStudy]),
-    ...originalProfile.certifications,
+    ...originalProfile.certifications.map((c) => c.name),
   ].join(" ")));
 
   const matched: string[] = [];

@@ -57,8 +57,7 @@ export const demoProfile: ResumeProfile = {
       gpa: "3.6",
     },
   ],
-  certifications: ["Lean Six Sigma Green Belt"],
-  certificationDetails: [
+  certifications: [
     {
       id: "demo-cert-1",
       name: "Lean Six Sigma Green Belt",
@@ -72,6 +71,7 @@ export const demoProfile: ResumeProfile = {
       id: "demo-proj-1",
       name: "Route-efficiency dashboard",
       description: "Personal Tableau project ranking delivery routes by cost per stop; adopted by two regional managers.",
+      technologies: ["Tableau"],
     },
   ],
 };

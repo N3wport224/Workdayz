@@ -159,7 +159,7 @@ export default function ApplicationsPage() {
                   {app.fitAnalysis && (
                     <div>
                       <span className="text-gray-400">Fit:</span>
-                      <p className="text-gray-400 text-xs italic">"{app.fitAnalysis.verdict}"</p>
+                      <p className="text-gray-400 text-xs italic">&ldquo;{app.fitAnalysis.verdict}&rdquo;</p>
                     </div>
                   )}
                 </div>

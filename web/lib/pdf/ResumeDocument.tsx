@@ -1,5 +1,5 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import type { CertificationEntry, ContactInfo, EducationEntry, ProjectEntry, WorkExperience } from "@/lib/types";
+import type { CertificationEntry, ContactInfo, EducationEntry, ExperienceEntry, ProjectEntry } from "@/lib/types";
 import { formatDateRange } from "@/lib/format-date";
 
 // ATS-safe layouts: single column, standard built-in font, plain text only —
@@ -42,7 +42,7 @@ export interface ResumePdfProps {
   contact: ContactInfo;
   summary: string;
   skills: string[];
-  experience: (WorkExperience & { bullets: string[] })[];
+  experience: (ExperienceEntry & { bullets: string[] })[];
   education: EducationEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];

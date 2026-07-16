@@ -54,7 +54,7 @@ export default function ProfilePage() {
   const updateExperience = (idx: number, field: string, value: string) => {
     setProfile((p) => {
       const exp = [...p.experience];
-      (exp[idx] as any)[field] = value;
+      (exp[idx] as unknown as Record<string, unknown>)[field] = value;
       return { ...p, experience: exp };
     });
   };

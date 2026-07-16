@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { UsageInfo } from "./types";
+import type { UsageTotals } from "./pricing";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const TOOL_NAME = "submit_rewritten_bullet";
@@ -18,7 +18,7 @@ export interface RewriteBulletInput {
 
 export async function rewriteBullet(
   input: RewriteBulletInput,
-): Promise<{ bullet: string; usage: UsageInfo }> {
+): Promise<{ bullet: string; usage: UsageTotals }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is not set. Add it to web/.env.local to enable rewriting.");

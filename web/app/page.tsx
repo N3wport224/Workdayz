@@ -55,11 +55,11 @@ export default function HomePage() {
           <h2 className="text-lg font-bold text-blue-400 mb-3">👋 Welcome to Workdayz</h2>
           <div className="space-y-3 text-sm text-gray-300">
             <p><strong>1. Set up your profile</strong> — Go to <a href="/profile" className="text-blue-400 underline">Profile</a> and paste your existing resume to auto-import. Or try the demo profile.</p>
-            <p><strong>2. Connect the extension</strong> — Install the browser extension and connect it from the popup. You'll see <span className="text-green-400">● Extension detected</span> below.</p>
+            <p><strong>2. Connect the extension</strong> — Install the browser extension and connect it from the popup. You&apos;ll see <span className="text-green-400">● Extension detected</span> below.</p>
             <p><strong>3. Apply for a job</strong> — Paste a job posting URL or the description on the <a href="/apply" className="text-blue-400 underline">Apply</a> page. Claude tailors your resume and scores it for ATS match.</p>
-            <p><strong>4. Autofill Workday</strong> — The tailored package syncs to the extension. Navigate to the Workday application form and click "Autofill this step".</p>
+            <p><strong>4. Autofill Workday</strong> — The tailored package syncs to the extension. Navigate to the Workday application form and click &ldquo;Autofill this step&rdquo;.</p>
           </div>
-          <button onClick={dismissTour} className="btn btn-primary mt-4">Got it — let's go!</button>
+          <button onClick={dismissTour} className="btn btn-primary mt-4">Got it — let&apos;s go!</button>
         </div>
       )}
 

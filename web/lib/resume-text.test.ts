@@ -21,7 +21,7 @@ describe("resumeToText", () => {
         { id: "e", school: "UT", degree: "BS", fieldOfStudy: "Math", startDate: "2016", endDate: "2020", gpa: "3.8" },
       ],
       certifications: ["PMP"],
-      projects: [{ id: "p", name: "Forecast tool", description: "Python model." }],
+      projects: [{ id: "p", name: "Forecast tool", description: "Python model.", technologies: [] }],
     });
     expect(text).toContain("ALEX PEREZ");
     expect(text).toContain("a@b.c | 555 | Austin, TX | linkedin.com/in/alex");

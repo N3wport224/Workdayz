@@ -368,7 +368,7 @@ export default function ApplyPage() {
                   </ul>
                 </div>
               </div>
-              <p className="mt-3 text-sm italic text-gray-400">"{result.fitAnalysis.verdict}"</p>
+              <p className="mt-3 text-sm italic text-gray-400">&ldquo;{result.fitAnalysis.verdict}&rdquo;</p>
             </div>
           )}
 

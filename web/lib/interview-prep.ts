@@ -1,5 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { InterviewPrep, JobPosting } from "./types";
+import type { JobPosting } from "./types";
+
+/** One generated interview question with prep. Distinct from the tracker's
+ * per-question `InterviewPrep` type — this is the generator's raw output,
+ * returned as JSON by the API route. */
+export interface InterviewPrepQuestion {
+  question: string;
+  category: string;
+  talkingPoints: string[];
+}
+
+export interface InterviewPrepResult {
+  generatedAt: string;
+  questions: InterviewPrepQuestion[];
+}
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 const TOOL_NAME = "submit_interview_prep";
@@ -16,7 +30,7 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
 
-export async function generateInterviewPrep(input: InterviewPrepInput): Promise<InterviewPrep> {
+export async function generateInterviewPrep(input: InterviewPrepInput): Promise<InterviewPrepResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error(

@@ -1,53 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { emptyProfile, hasProfile, loadProfile, mergeProfile, saveProfile } from "./storage";
+import { createDemoProfile, loadProfile, saveProfile } from "./storage";
 
 describe("storage", () => {
-  it("loadProfile returns the empty profile when there is no window (SSR)", () => {
-    expect(loadProfile()).toEqual(emptyProfile);
+  it("loadProfile returns null when localStorage is unavailable (SSR/node)", () => {
+    expect(loadProfile()).toBeNull();
   });
 
-  it("saveProfile is a no-op without throwing when there is no window (SSR)", () => {
-    expect(() => saveProfile(emptyProfile)).not.toThrow();
+  it("saveProfile is a no-op without throwing when localStorage is unavailable", () => {
+    expect(() => saveProfile(createDemoProfile())).not.toThrow();
   });
 
-  describe("mergeProfile", () => {
-    it("fills missing top-level fields from the empty profile", () => {
-      const merged = mergeProfile({ summary: "hi" });
-      expect(merged.summary).toBe("hi");
-      expect(merged.skills).toEqual([]);
-      expect(merged.contact.firstName).toBe("");
+  describe("createDemoProfile", () => {
+    it("returns a fully-shaped ResumeProfile", () => {
+      const p = createDemoProfile();
+      expect(typeof p.contact.firstName).toBe("string");
+      expect(p.contact.firstName.length).toBeGreaterThan(0);
+      expect(Array.isArray(p.skills)).toBe(true);
+      expect(Array.isArray(p.experience)).toBe(true);
+      expect(Array.isArray(p.education)).toBe(true);
+      expect(Array.isArray(p.projects)).toBe(true);
     });
 
-    it("deep-merges contact so partial contacts keep every key as a string", () => {
-      const merged = mergeProfile({
-        contact: { firstName: "Alex" } as Partial<typeof emptyProfile.contact> as typeof emptyProfile.contact,
-      });
-      expect(merged.contact.firstName).toBe("Alex");
-      expect(merged.contact.linkedin).toBe("");
-    });
-
-    it("returns the empty profile for garbage input", () => {
-      expect(mergeProfile(null)).toEqual(emptyProfile);
-      expect(mergeProfile(undefined)).toEqual(emptyProfile);
-    });
-  });
-
-  describe("hasProfile", () => {
-    it("is false for an empty profile", () => {
-      expect(hasProfile(emptyProfile)).toBe(false);
-    });
-
-    it("is false when only one of firstName/email is set", () => {
-      expect(hasProfile({ ...emptyProfile, contact: { ...emptyProfile.contact, firstName: "Alex" } })).toBe(false);
-    });
-
-    it("is true once firstName and email are both set", () => {
-      expect(
-        hasProfile({
-          ...emptyProfile,
-          contact: { ...emptyProfile.contact, firstName: "Alex", email: "alex@example.com" },
-        }),
-      ).toBe(true);
+    it("returns certifications as structured entries (name required)", () => {
+      const p = createDemoProfile();
+      expect(Array.isArray(p.certifications)).toBe(true);
+      for (const cert of p.certifications) {
+        expect(typeof cert.id).toBe("string");
+        expect(typeof cert.name).toBe("string");
+      }
     });
   });
 });

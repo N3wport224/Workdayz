@@ -36,24 +36,27 @@ function setStatus(s: BridgeStatus) {
   _listeners.forEach((cb) => cb(s));
 }
 
-// Listen for extension announcements
-window.addEventListener("message", (event: MessageEvent) => {
-  if (event.source !== window) return;
-  const data = event.data as { source?: string; type?: string; payload?: unknown };
-  if (data?.source !== "workdayz-extension") return;
+// Listen for extension announcements. Guarded so importing this module during
+// server-side prerender (where `window` is undefined) doesn't crash the build.
+if (typeof window !== "undefined") {
+  window.addEventListener("message", (event: MessageEvent) => {
+    if (event.source !== window) return;
+    const data = event.data as { source?: string; type?: string; payload?: unknown };
+    if (data?.source !== "workdayz-extension") return;
 
-  switch (data.type) {
-    case MESSAGE_TYPES.extensionReady:
-      setStatus("detected");
-      break;
-    case MESSAGE_TYPES.packageStored:
-      // The extension confirmed it stored the package
-      break;
-    case MESSAGE_TYPES.scrapedJob:
-      // The extension sent a scraped job posting
-      break;
-  }
-});
+    switch (data.type) {
+      case MESSAGE_TYPES.extensionReady:
+        setStatus("detected");
+        break;
+      case MESSAGE_TYPES.packageStored:
+        // The extension confirmed it stored the package
+        break;
+      case MESSAGE_TYPES.scrapedJob:
+        // The extension sent a scraped job posting
+        break;
+    }
+  });
+}
 
 /** Ping the extension to check if it's loaded. */
 export function pingExtension(): void {
