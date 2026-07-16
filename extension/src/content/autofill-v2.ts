@@ -180,7 +180,7 @@ export function previewEnhanced(
     confidence: pct,
     formattedValues: plan.map((p: IncrementalPlan) => ({
       field: p.label,
-      raw: p.newValue,
+      raw: p.rawValue,
       formatted: p.newValue,
     })),
   };

@@ -393,7 +393,16 @@ export function flashPreviewField(el: HTMLElement): void {
 }
 
 /** Brief visual pulse so the user can see exactly what just got filled. */
+// Gate for the fill-flash effect, driven by the "Highlight filled fields"
+// setting. Default on; runAutofill sets it from settings before each run.
+let highlightEnabled = true;
+
+export function setFillHighlight(enabled: boolean): void {
+  highlightEnabled = enabled;
+}
+
 function flashField(el: HTMLElement): void {
+  if (!highlightEnabled) return;
   const original = el.style.outline;
   el.style.outline = "2px solid #2563eb";
   el.style.outlineOffset = "1px";

@@ -99,7 +99,7 @@ export function formatLinkedIn(value: string): string {
   return formatUrl(trimmed);
 }
 
-/** Formats a currency amount */
+/** Formats a currency amount for display (e.g. "$85,000"). */
 export function formatCurrency(value: string): string {
   const digits = value.replace(/[^0-9.]/g, "");
   const num = parseFloat(digits);
@@ -107,6 +107,17 @@ export function formatCurrency(value: string): string {
   return num % 1 === 0
     ? `$${num.toLocaleString("en-US")}`
     : `$${num.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
+}
+
+/** Normalizes a salary to plain digits for FILLING: numeric Workday inputs
+ * silently reject decorated values like "$85,000" (the value becomes "").
+ * "85k" → "85000", "$85,000" → "85000"; free text passes through untouched. */
+export function formatSalaryNumber(value: string): string {
+  const trimmed = value.trim();
+  const kMatch = trimmed.match(/^\$?\s*(\d+(?:\.\d+)?)\s*k$/i);
+  if (kMatch) return String(Math.round(parseFloat(kMatch[1]) * 1000));
+  const cleaned = trimmed.replace(/[$,\s]/g, "");
+  return /^\d+(\.\d+)?$/.test(cleaned) ? cleaned : value;
 }
 
 /** Detects and formats common date input patterns */

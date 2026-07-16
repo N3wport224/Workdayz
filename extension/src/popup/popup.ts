@@ -1,4 +1,11 @@
 import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
+import { getSettings, updateSettings, getUsageStats, type ExtensionSettings } from "../content/features";
+import { runAudit } from "../content/feature-audit";
+
+// Enhanced results (autofill-v2) are a superset of AutofillRunSummary.
+interface MaybeEnhanced extends AutofillRunSummary {
+  confidence?: { pct: number; label: string };
+}
 
 const webAppUrlInput = document.getElementById("webAppUrl") as HTMLInputElement;
 const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
@@ -22,6 +29,22 @@ const importArea = document.getElementById("importArea") as HTMLTextAreaElement;
 const rulesFeedback = document.getElementById("rulesFeedback") as HTMLDivElement;
 const connectionLabel = document.getElementById("connectionLabel") as HTMLSpanElement;
 const connectionDetail = document.getElementById("connectionDetail") as HTMLDivElement;
+const versionBadge = document.getElementById("versionBadge") as HTMLSpanElement;
+const settingsFeedback = document.getElementById("settingsFeedback") as HTMLDivElement;
+const usageStatsGrid = document.getElementById("usageStats") as HTMLDivElement;
+const auditBtn = document.getElementById("auditBtn") as HTMLButtonElement;
+const auditResults = document.getElementById("auditResults") as HTMLUListElement;
+const timeoutInput = document.getElementById("setTimeout") as HTMLInputElement;
+
+// Feature toggles → ExtensionSettings keys (single source of truth in
+// content/features.ts; the popup just binds UI to it).
+const TOGGLE_BINDINGS: [string, keyof ExtensionSettings][] = [
+  ["setSmartFormatting", "smartFormatting"],
+  ["setShowConfidence", "showConfidenceScore"],
+  ["setHighlight", "highlightFilledFields"],
+  ["setScreenReader", "enableScreenReaderAnnouncements"],
+  ["setAutoFill", "autoFillOnPageLoad"],
+];
 
 let activeTenantHost: string | null = null;
 
@@ -182,7 +205,7 @@ autofillBtn.addEventListener("click", async () => {
     return;
   }
   try {
-    const result = (await chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOFILL" })) as AutofillRunSummary;
+    const result = (await chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOFILL" })) as MaybeEnhanced;
     if (!result || (!result.filled.length && !result.filesAttached.length)) {
       showFeedback(autofillFeedback, "Nothing to fill — open a Workday application page with a tailored package ready.", "warning");
     } else {
@@ -191,10 +214,11 @@ autofillBtn.addEventListener("click", async () => {
       const leftForYou = result.leftForYou?.length ?? 0;
       const stillRequired = result.stillRequired?.length ?? 0;
       const skipped = result.skipped.length;
+      const confidence = result.confidence ? ` Confidence: ${result.confidence.label}.` : "";
 
       showFeedback(
         autofillFeedback,
-        `✅ Filled ${total} field(s)${files ? ` and attached ${result.filesAttached.join(" & ")}` : ""}.${stillRequired ? ` ${stillRequired} required field(s) still need you.` : ""} Review before continuing.`,
+        `✅ Filled ${total} field(s)${files ? ` and attached ${result.filesAttached.join(" & ")}` : ""}.${confidence}${stillRequired ? ` ${stillRequired} required field(s) still need you.` : ""} Review before continuing.`,
         stillRequired > 0 ? "warning" : "success"
       );
 
@@ -363,4 +387,67 @@ function setupCollapsible(toggleId: string, contentId: string) {
 setupCollapsible("rulesToggle", "rulesContent");
 setupCollapsible("connectToggle", "connectContent");
 
+// --- Tabs ---
+document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.tab ?? "")?.classList.add("active");
+  });
+});
+
+// --- Settings tab: bind toggles to ExtensionSettings ---
+async function initSettings() {
+  const settings = await getSettings();
+  for (const [elId, key] of TOGGLE_BINDINGS) {
+    const el = document.getElementById(elId) as HTMLInputElement | null;
+    if (!el) continue;
+    el.checked = Boolean(settings[key]);
+    el.addEventListener("change", async () => {
+      await updateSettings({ [key]: el.checked });
+      showFeedback(settingsFeedback, "Saved — takes effect on the next fill.", "success");
+    });
+  }
+
+  timeoutInput.value = String(Math.round(settings.fillTimeoutMs / 1000));
+  timeoutInput.addEventListener("change", async () => {
+    const seconds = Math.min(120, Math.max(5, Number(timeoutInput.value) || 30));
+    timeoutInput.value = String(seconds);
+    await updateSettings({ fillTimeoutMs: seconds * 1000 });
+    showFeedback(settingsFeedback, `Fill timeout set to ${seconds}s.`, "success");
+  });
+
+  // Local-only usage stats (never leaves the browser)
+  const stats = await getUsageStats();
+  usageStatsGrid.innerHTML = `
+    <div class="summary-item"><div class="num green">${stats.totalAutofills}</div><div class="desc">Autofills</div></div>
+    <div class="summary-item"><div class="num green">${stats.totalFieldsFilled}</div><div class="desc">Fields Filled</div></div>
+  `;
+
+  try {
+    versionBadge.textContent = `v${chrome.runtime.getManifest().version}`;
+  } catch {
+    /* keep the static default */
+  }
+}
+
+auditBtn.addEventListener("click", async () => {
+  auditBtn.disabled = true;
+  auditBtn.textContent = "Running…";
+  try {
+    const report = await runAudit();
+    auditResults.innerHTML = report.checks
+      .map(
+        (c) =>
+          `<li><span class="chk ${c.status}">${c.status === "pass" ? "✓" : c.status === "warn" ? "!" : "✗"}</span><span><strong>${escapeHtml(c.name)}</strong> <span class="detail">${escapeHtml(c.detail)}</span></span></li>`,
+      )
+      .join("");
+  } finally {
+    auditBtn.disabled = false;
+    auditBtn.textContent = "Run self-check";
+  }
+});
+
 init();
+initSettings();

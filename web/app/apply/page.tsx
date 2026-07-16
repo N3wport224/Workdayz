@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { loadProfile, saveApplication, loadApplications } from "@/lib/storage";
 import { sendAutofillPackage, getBridgeStatus } from "@/lib/extension-bridge";
 import { scoreResume } from "@/lib/ats-score";
+import { segmentByKeywords } from "@/lib/highlight-keywords";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
 import type { ResumeProfile, JobPosting, TailoredApplication, TailoredVariant, AtsBreakdown } from "@/lib/types";
 
@@ -32,6 +33,8 @@ export default function ApplyPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [showHighlights, setShowHighlights] = useState(false);
+  const [copiedMissing, setCopiedMissing] = useState(false);
 
   useEffect(() => {
     const p = loadProfile();
@@ -273,7 +276,7 @@ export default function ApplyPage() {
             <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-gray-400">Matched keywords:</span>
-                <span className="ml-2 text-green-400 font-medium">{result.atsBreakdown.matchedKeywords}</span>
+                <span className="ml-2 text-green-400 font-medium">{result.atsBreakdown.matched.length}</span>
               </div>
               <div>
                 <span className="text-gray-400">Missing keywords:</span>
@@ -284,6 +287,73 @@ export default function ApplyPage() {
                 <span className="ml-2 font-medium">${result.estimatedCost}</span>
               </div>
             </div>
+
+            {/* Keyword chips */}
+            {(result.atsBreakdown.matched.length > 0 || result.atsBreakdown.missing.length > 0) && (
+              <div className="mt-4 space-y-2">
+                {result.atsBreakdown.matched.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide mr-1">Matched</span>
+                    {result.atsBreakdown.matched.map((kw, i) => (
+                      <span key={`m-${kw}-${i}`} className="px-2 py-0.5 rounded-full text-xs bg-green-900/40 text-green-300 border border-green-700/40">✓ {kw}</span>
+                    ))}
+                  </div>
+                )}
+                {result.atsBreakdown.missing.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide mr-1">Missing</span>
+                    {result.atsBreakdown.missing.map((kw, i) => (
+                      <span key={`x-${kw}-${i}`} className="px-2 py-0.5 rounded-full text-xs bg-amber-900/40 text-amber-300 border border-amber-700/40">{kw}</span>
+                    ))}
+                    <button
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(result.atsBreakdown.missing.join(", "));
+                          setCopiedMissing(true);
+                          setTimeout(() => setCopiedMissing(false), 2000);
+                        } catch { /* clipboard unavailable */ }
+                      }}
+                      className="px-2 py-0.5 rounded-full text-xs bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+                    >
+                      {copiedMissing ? "Copied ✓" : "Copy list"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* JD keyword highlighting */}
+            {jobDescription.trim() && (
+              <div className="mt-4">
+                <button
+                  onClick={() => setShowHighlights((v) => !v)}
+                  className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  {showHighlights ? "▼ Hide" : "▶ Show"} job description with keyword highlights
+                </button>
+                {showHighlights && (
+                  <div className="mt-2 p-3 bg-gray-800 rounded-lg text-sm leading-relaxed max-h-72 overflow-y-auto whitespace-pre-wrap">
+                    {segmentByKeywords(jobDescription, result.atsBreakdown.matched, result.atsBreakdown.missing).map((seg, i) =>
+                      seg.kind === "plain" ? (
+                        <span key={i}>{seg.text}</span>
+                      ) : (
+                        <mark
+                          key={i}
+                          className={
+                            seg.kind === "matched"
+                              ? "bg-green-900/60 text-green-200 rounded px-0.5"
+                              : "bg-amber-900/60 text-amber-200 rounded px-0.5"
+                          }
+                        >
+                          {seg.text}
+                        </mark>
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {result.atsBreakdown.integrityFlags?.length > 0 && (
               <div className="mt-3 p-3 bg-red-950/30 border border-red-500/30 rounded-lg">
                 <p className="text-red-400 text-sm font-medium">⚠ Integrity flags:</p>

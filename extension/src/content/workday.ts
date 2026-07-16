@@ -1,11 +1,9 @@
 import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type CustomFillRule, type JobPosting, type QuestionAnswer, type RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
-import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, previewAutofill, runAutofill } from "./autofill";
+import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm } from "./autofill";
 import { undoFill } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
-import { confidenceScore, detectActiveTenant, checkPackageStaleness, preScanRequiredFields, sectionFillStatus, detectWizardStep, normalizeFieldValue, formatPreview } from "./fill-engine";
-import { showToast, announceToScreenReader, validatePackage, recordAutofillRun, startSession, updateSession, getSession, generateFieldMappings, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText, getSettings, updateSettings, getUsageStats, saveTemplate, loadTemplates, applyTemplatesSequentially } from "./features";
-import { runAudit } from "./feature-audit";
+import { getSettings } from "./features";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -164,7 +162,9 @@ async function runAutofillNow(widget: import("./widget").Widget) {
   let completed = 0;
 
   widget.showProgress("Contact & files", completed, totalSections);
-  const result = await runAutofill(source.pkg, await getCustomRules());
+  // Enhanced pipeline: smart formatting, validation, confidence scoring,
+  // session tracking, and toasts — see autofill-v2.ts.
+  const result = await runEnhancedAutofill(source.pkg, await getCustomRules());
   completed++;
 
   if (source.pkg.experience.length > 0) {
@@ -182,10 +182,12 @@ async function runAutofillNow(widget: import("./widget").Widget) {
 
   widget.showResult(result);
 
+  const settings = await getSettings();
+  const confidenceNote = settings.showConfidenceScore ? ` Fill confidence: ${result.confidence.label}.` : "";
   const suffix = source.tailored
     ? "Review before continuing — nothing is submitted automatically."
     : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
-  widget.setStatus(`${result.filled.length} field group(s) filled. ${suffix}${staleWarning(source.pkg, source.tailored)}`);
+  widget.setStatus(`${result.filled.length} field group(s) filled.${confidenceNote} ${suffix}${staleWarning(source.pkg, source.tailored)}`);
   // Toolbar badge mirrors the fill count for at-a-glance confirmation.
   sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
   void recordFillForPage(result.filled.length);
@@ -196,7 +198,7 @@ function initApplicationFormWidget() {
   const widget = mountWidget("Workdayz");
   widget.setStatus("Checking for a tailored application...");
 
-  Promise.all([getFillSource(), previousFillForPage()]).then(([source, previous]) => {
+  Promise.all([getFillSource(), previousFillForPage(), getSettings()]).then(([source, previous, settings]) => {
     const alreadyFilled = previous
       ? ` You already filled this page (${previous.filled} field group(s), ${new Date(previous.at).toLocaleString()}).`
       : "";
@@ -207,6 +209,15 @@ function initApplicationFormWidget() {
           ? `Ready: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}`
           : `Ready to fill from your base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}`,
     );
+    // Opt-in setting: fill as soon as an application step appears — but only
+    // if THIS page hasn't been filled before (step memory prevents re-fill
+    // loops on SPA re-renders). Nothing is ever submitted automatically.
+    if (settings.autoFillOnPageLoad && source && !previous) {
+      widget.setStatus("Auto-fill is on — filling this step…");
+      runAutofillNow(widget).catch(() => {
+        widget.setStatus("Auto-fill hit an error — use the buttons below to fill manually.");
+      });
+    }
   });
 
   addButton(widget.root, "Preview fill (writes nothing)", async () => {
@@ -216,13 +227,16 @@ function initApplicationFormWidget() {
         widget.setStatus("Nothing to preview — save your resume profile in the Workdayz web app first.");
         return;
       }
-      const preview = previewAutofill(source.pkg, await getCustomRules());
+      const preview = previewEnhanced(source.pkg, await getCustomRules());
       const parts = [
         `Would fill ${preview.wouldFill.length} text field(s) (highlighted with a dashed outline)`,
       ];
       if (preview.files.length) parts.push(`attach ${preview.files.join(" & ")}`);
       if (preview.experiencePanels) parts.push(`fill ${preview.experiencePanels} experience panel(s)`);
       if (preview.educationPanels) parts.push(`fill ${preview.educationPanels} education panel(s)`);
+      // Surface what smart formatting would change, so nothing is a surprise.
+      const reformatted = preview.incrementalPlan.filter((p) => p.action === "fill" && p.newValue !== String(source.pkg.contact[p.label as keyof typeof source.pkg.contact] ?? p.newValue));
+      if (reformatted.length) parts.push(`smart-format ${reformatted.length} value(s)`);
       widget.setStatus(
         `PREVIEW — ${parts.join(", ")}. Dropdowns and split dates resolve during the real fill. Nothing was changed.`,
       );
@@ -236,8 +250,12 @@ function initApplicationFormWidget() {
     widget.reset();
     try {
       await runAutofillNow(widget);
-    } catch {
-      widget.setStatus("The extension was updated — reload this page and try again.");
+    } catch (err) {
+      widget.setStatus(
+        err instanceof Error && /timed out/i.test(err.message)
+          ? `${err.message} — the page may be loading slowly; try again.`
+          : "The extension was updated — reload this page and try again.",
+      );
     }
     runBtn.disabled = false;
   });
@@ -347,7 +365,9 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
         sendResponse({ filled: [], skipped: [], filesAttached: [], leftForYou: [], mismatches: [], stillRequired: [] });
         return;
       }
-      const result = await runAutofill(source.pkg, await getCustomRules());
+      // Same enhanced pipeline as the widget button; the result is a superset
+      // of AutofillRunSummary so the popup's existing rendering keeps working.
+      const result = await runEnhancedAutofill(source.pkg, await getCustomRules());
       sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
       void recordFillForPage(result.filled.length);
       sendResponse(result);

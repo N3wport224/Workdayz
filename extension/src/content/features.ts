@@ -573,6 +573,9 @@ export function importFieldValuesFromText(text: string): ImportResult {
 // Feature 30: Settings manager — persistent user preferences
 // =========================================================================
 export interface ExtensionSettings {
+  /** Normalize values (phone, names, dates, URLs…) to Workday-friendly
+   * formats before writing them into fields. */
+  smartFormatting: boolean;
   autoFillOnPageLoad: boolean;
   showConfidenceScore: boolean;
   highlightFilledFields: boolean;
@@ -586,6 +589,7 @@ export interface ExtensionSettings {
 const SETTINGS_KEY = "workdayz.settings";
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
+  smartFormatting: true,
   autoFillOnPageLoad: false,
   showConfidenceScore: true,
   highlightFilledFields: true,

@@ -17,9 +17,12 @@ import {
   isVisible,
   setCheckbox,
   setFieldValue,
+  setFillHighlight,
   startFillLog,
   type FillableElement,
 } from "./dom-utils";
+import { normalizeFieldValue } from "./fill-engine";
+import { getSettings } from "./features";
 
 // Self-identification and similar personal questions are NEVER autofilled or
 // auto-drafted — they're the applicant's alone to answer.
@@ -426,6 +429,13 @@ export async function runAutofill(
     stillRequired: [],
   };
   startFillLog();
+  // Feature settings gate behavior for the whole run: smart formatting
+  // normalizes values to Workday-friendly shapes before writing; the
+  // highlight toggle controls the fill-flash effect.
+  const settings = await getSettings();
+  setFillHighlight(settings.highlightFilledFields);
+  const smartValue = (label: string, value: string): string =>
+    settings.smartFormatting ? normalizeFieldValue(label, value) : value;
   const fields = findFillableFields();
 
   // Surface (never touch) self-identification questions on this step.
@@ -439,17 +449,25 @@ export async function runAutofill(
   for (const [key, synonyms] of CONTACT_SYNONYMS) {
     const value = pkg.contact[key];
     if (!value) continue;
+    // Normalize by the field's primary label ("phone number" → formatPhone…).
+    // Only text inputs get the formatted value — listbox/combobox selection
+    // must match the raw option text.
+    const formatted = smartValue(synonyms[0], value);
     const field = findFieldBySynonyms(fields, synonyms);
     if (field) {
-      setFieldValue(field, value);
+      setFieldValue(field, formatted);
       summary.filled.push(key);
       continue;
     }
     // Field exists but is already filled: don't overwrite, but flag when the
     // employer-prefilled value differs from the profile (stale phone, etc.).
+    // Either the raw or the smart-formatted shape counts as a match.
     const prefilled = findFieldBySynonyms(fields, synonyms, { onlyEmpty: false });
-    if (prefilled && prefilled.value?.trim() && prefilled.value.trim() !== value.trim()) {
-      summary.mismatches.push(`${key}: form has "${prefilled.value.trim().slice(0, 40)}", profile has "${value.slice(0, 40)}"`);
+    if (prefilled && prefilled.value?.trim()) {
+      const existing = prefilled.value.trim();
+      if (existing !== value.trim() && existing !== formatted.trim()) {
+        summary.mismatches.push(`${key}: form has "${existing.slice(0, 40)}", profile has "${value.slice(0, 40)}"`);
+      }
       continue;
     }
     // No text input matched — Workday renders country/state/phone-type as
@@ -475,7 +493,9 @@ export async function runAutofill(
     if (!label || !rule.value || isPersonalField(label)) continue;
     const field = findFieldBySynonyms(fields, [label.toLowerCase()]);
     if (field) {
-      setFieldValue(field, rule.value);
+      // Smart formatting applies label-based ("desired salary" → currency,
+      // "available start date" → MM/YYYY…); dropdown paths use the raw value.
+      setFieldValue(field, smartValue(label, rule.value));
       summary.filled.push(`custom: ${label.slice(0, 40)}`);
       continue;
     }

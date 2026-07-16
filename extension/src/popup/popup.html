@@ -202,6 +202,75 @@
       .hidden { display: none !important; }
       .fade-in { animation: fadeIn 0.2s ease-in; }
       @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      /* Tabs */
+      .tabs {
+        display: flex;
+        background: var(--card);
+        border-bottom: 1px solid var(--border);
+      }
+      .tab {
+        flex: 1;
+        text-align: center;
+        padding: 9px 0 7px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border: none;
+        background: none;
+        border-bottom: 2px solid transparent;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .tab:hover { color: var(--text); }
+      .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+      .tab-panel { display: none; }
+      .tab-panel.active { display: block; }
+      /* Toggle switches */
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 0;
+      }
+      .toggle-row + .toggle-row { border-top: 1px solid var(--border); }
+      .toggle-label { flex: 1; }
+      .toggle-label .name { font-size: 12px; font-weight: 600; }
+      .toggle-label .hint { font-size: 10.5px; color: var(--text-secondary); line-height: 1.35; }
+      .switch { position: relative; width: 34px; height: 20px; flex-shrink: 0; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .switch .slider {
+        position: absolute;
+        inset: 0;
+        background: #cbd5e1;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .switch .slider::before {
+        content: "";
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        left: 2px;
+        top: 2px;
+        background: white;
+        border-radius: 50%;
+        transition: transform 0.15s;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+      }
+      .switch input:checked + .slider { background: var(--success); }
+      .switch input:checked + .slider::before { transform: translateX(14px); }
+      .audit-list { list-style: none; font-size: 11px; margin-top: 6px; }
+      .audit-list li { padding: 3px 0; display: flex; gap: 6px; align-items: baseline; }
+      .audit-list .chk { font-weight: 700; flex-shrink: 0; }
+      .audit-list .chk.pass { color: var(--success); }
+      .audit-list .chk.warn { color: var(--warning); }
+      .audit-list .chk.fail { color: var(--danger); }
+      .audit-list .detail { color: var(--text-secondary); }
+      .timeout-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+      .timeout-row input { width: 70px; }
+      .timeout-row span { font-size: 11px; color: var(--text-secondary); }
     </style>
   </head>
   <body>
@@ -210,7 +279,14 @@
       <span class="badge" id="versionBadge">v1</span>
     </div>
 
+    <div class="tabs">
+      <button class="tab active" data-tab="autofillPanel">Autofill</button>
+      <button class="tab" data-tab="rulesPanel">Rules</button>
+      <button class="tab" data-tab="settingsPanel">Settings</button>
+    </div>
+
     <div class="content">
+      <div class="tab-panel active" id="autofillPanel">
       <!-- Connection Status -->
       <div class="card">
         <div class="card-title">Connection</div>
@@ -263,7 +339,9 @@
           <button id="clearBtn" class="btn btn-danger btn-sm">Clear data</button>
         </div>
       </div>
+      </div><!-- /autofillPanel -->
 
+      <div class="tab-panel" id="rulesPanel">
       <!-- Custom Rules -->
       <div class="card">
         <div class="card-title collapsible" id="rulesToggle">▼ Custom Answers</div>
@@ -283,6 +361,54 @@
           <div id="rulesFeedback" class="feedback hidden"></div>
         </div>
       </div>
+      </div><!-- /rulesPanel -->
+
+      <div class="tab-panel" id="settingsPanel">
+      <!-- Feature Controls -->
+      <div class="card">
+        <div class="card-title">Features</div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Smart formatting</div>
+            <div class="hint">Normalize phones, names, dates &amp; URLs to Workday-friendly formats while filling.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setSmartFormatting" /><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Confidence score</div>
+            <div class="hint">Show how much of the form was filled after each run.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setShowConfidence" /><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Highlight filled fields</div>
+            <div class="hint">Flash a blue outline on every field the autofill writes.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setHighlight" /><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Screen-reader announcements</div>
+            <div class="hint">Announce fill results via an ARIA live region.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setScreenReader" /><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Auto-fill on page load</div>
+            <div class="hint">Fill each application step as soon as it appears (never submits). Skips pages you already filled.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setAutoFill" /><span class="slider"></span></label>
+        </div>
+        <div class="timeout-row">
+          <label for="setTimeout" style="margin: 0">Fill timeout</label>
+          <input id="setTimeout" type="number" min="5" max="120" step="5" />
+          <span>seconds</span>
+        </div>
+        <div id="settingsFeedback" class="feedback hidden"></div>
+      </div>
 
       <!-- Web App Connection -->
       <div class="card">
@@ -294,6 +420,15 @@
           <div id="connectFeedback" class="feedback hidden"></div>
         </div>
       </div>
+
+      <!-- Diagnostics -->
+      <div class="card">
+        <div class="card-title">Diagnostics</div>
+        <div class="summary-grid" id="usageStats"></div>
+        <button id="auditBtn" class="btn btn-secondary btn-sm" style="margin-top: 8px">Run self-check</button>
+        <ul class="audit-list" id="auditResults"></ul>
+      </div>
+      </div><!-- /settingsPanel -->
     </div>
 
     <script src="popup.js"></script>

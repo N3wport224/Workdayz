@@ -25,7 +25,7 @@ import {
   startFillLog,
   type FillableElement,
 } from "./dom-utils";
-import { formatPhone, formatName, formatAddress, formatPostalCode, formatUrl, formatLinkedIn, formatCurrency, formatDateInput } from "./smart-format";
+import { formatPhone, formatName, formatAddress, formatPostalCode, formatUrl, formatLinkedIn, formatSalaryNumber, formatDateInput } from "./smart-format";
 import { getTenantSynonyms, getInternationalSynonyms, TENANT_FIELD_MAPS } from "./field-synonyms";
 
 /**
@@ -41,7 +41,9 @@ export function normalizeFieldValue(label: string, value: string): string {
   if (/postal|zip|code postal|código postal|plz/i.test(lower)) return formatPostalCode(value);
   if (/linkedin/i.test(lower)) return formatLinkedIn(value);
   if (/website|portfolio|url/i.test(lower)) return formatUrl(value);
-  if (/salary|pay|compensation|salaire|salario/i.test(lower)) return formatCurrency(value);
+  // Salary stays plain digits: "$85,000" typed into a numeric Workday input
+  // is silently rejected (value becomes ""), so decorated currency is unsafe.
+  if (/salary|pay|compensation|salaire|salario/i.test(lower)) return formatSalaryNumber(value);
   if (/start date|end date|from date|to date|graduation|issued|expiration|expiry/i.test(lower)) return formatDateInput(value);
   return value;
 }
@@ -54,6 +56,8 @@ export interface IncrementalPlan {
   field: FillableElement;
   label: string;
   currentValue: string;
+  /** The profile value before smart formatting. */
+  rawValue: string;
   newValue: string;
   action: "fill" | "skip-prefilled" | "skip-mismatch";
 }
@@ -89,6 +93,7 @@ export function planIncrementalFill(
       field,
       label: key,
       currentValue: field.value ?? "",
+      rawValue: value,
       newValue: normalized,
       action: field.value?.trim() ? "skip-prefilled" : "fill",
     });
