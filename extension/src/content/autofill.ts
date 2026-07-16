@@ -36,10 +36,15 @@ function isPersonalField(label: string): boolean {
   return PERSONAL_PATTERNS.some((p) => lower.includes(p));
 }
 
+// Specific keys BEFORE generic ones: label matching is substring-based, so
+// "preferred first name" must be claimed by preferredName before firstName's
+// "first name" synonym reaches it (same for workPhone vs phone).
 const CONTACT_SYNONYMS: [keyof AutofillPackage["contact"], string[]][] = [
+  ["preferredName", ["preferred name", "preferred first name", "goes by", "nickname"]],
   ["firstName", ["first name", "legal first name", "given name"]],
   ["lastName", ["last name", "legal last name", "family name", "surname"]],
   ["email", ["email address", "email"]],
+  ["workPhone", ["work phone", "business phone", "secondary phone", "alternate phone"]],
   ["phone", ["phone number", "mobile phone", "phone"]],
   ["address", ["address line 1", "street address", "address"]],
   ["city", ["city"]],

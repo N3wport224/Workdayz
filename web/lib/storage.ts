@@ -41,6 +41,111 @@ export function loadProfile(): ResumeProfile | null {
   }
 }
 
+// --- Multiple named profiles (item 14) -------------------------------------
+// The map holds every profile; PROFILE_KEY always mirrors the ACTIVE one so
+// existing consumers (apply page, extension sync) keep reading loadProfile().
+const PROFILES_KEY = "workdayz-profiles";
+const ACTIVE_PROFILE_KEY = "workdayz-active-profile";
+
+function loadProfileMap(): Record<string, ResumeProfile> {
+  try {
+    const raw = localStorage.getItem(PROFILES_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, ResumeProfile>) : {};
+    // First run: migrate the single legacy profile into the map.
+    if (Object.keys(map).length === 0) {
+      const single = loadProfile();
+      if (single) {
+        map["Default"] = single;
+        localStorage.setItem(PROFILES_KEY, JSON.stringify(map));
+        localStorage.setItem(ACTIVE_PROFILE_KEY, "Default");
+      }
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+export function listProfileNames(): string[] {
+  const names = Object.keys(loadProfileMap());
+  return names.length ? names.sort() : ["Default"];
+}
+
+export function getActiveProfileName(): string {
+  try {
+    return localStorage.getItem(ACTIVE_PROFILE_KEY) ?? "Default";
+  } catch {
+    return "Default";
+  }
+}
+
+/** Saves under the active name AND mirrors to the legacy single-profile key. */
+export function saveNamedProfile(profile: ResumeProfile): void {
+  saveProfile(profile);
+  try {
+    const map = loadProfileMap();
+    map[getActiveProfileName()] = profile;
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error("Failed to save named profile:", e);
+  }
+}
+
+/** Switches the active profile; returns it (null if the name is unknown). */
+export function switchProfile(name: string): ResumeProfile | null {
+  try {
+    const map = loadProfileMap();
+    const profile = map[name];
+    if (!profile) return null;
+    localStorage.setItem(ACTIVE_PROFILE_KEY, name);
+    saveProfile(profile); // mirror as the active single profile
+    return profile;
+  } catch {
+    return null;
+  }
+}
+
+/** Creates a new named profile (optionally copying another) and activates it. */
+export function createNamedProfile(name: string, copyFrom?: ResumeProfile): ResumeProfile | null {
+  const trimmed = name.trim().slice(0, 40);
+  if (!trimmed) return null;
+  try {
+    const map = loadProfileMap();
+    if (map[trimmed]) return null; // no silent overwrite
+    const fresh: ResumeProfile = copyFrom
+      ? JSON.parse(JSON.stringify(copyFrom))
+      : {
+          contact: { firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "", postalCode: "", country: "US", linkedin: "", website: "" },
+          summary: "", skills: [], experience: [], education: [], projects: [], certifications: [],
+        };
+    map[trimmed] = fresh;
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(map));
+    localStorage.setItem(ACTIVE_PROFILE_KEY, trimmed);
+    saveProfile(fresh);
+    return fresh;
+  } catch {
+    return null;
+  }
+}
+
+/** Deletes a named profile. Refuses to delete the last one. */
+export function deleteNamedProfile(name: string): boolean {
+  try {
+    const map = loadProfileMap();
+    if (!map[name] || Object.keys(map).length <= 1) return false;
+    delete map[name];
+    localStorage.setItem(PROFILES_KEY, JSON.stringify(map));
+    if (getActiveProfileName() === name) {
+      const next = Object.keys(map).sort()[0];
+      localStorage.setItem(ACTIVE_PROFILE_KEY, next);
+      saveProfile(map[next]);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Applications
 export function saveApplications(apps: TailoredApplication[]): void {
   try {

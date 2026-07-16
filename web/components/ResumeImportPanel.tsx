@@ -19,7 +19,25 @@ export function ResumeImportPanel({ onImported }: { onImported: (profile: Resume
   const [pdf, setPdf] = useState<{ base64: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [linkedinUrl, setLinkedinUrl] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Item 13: drag-and-drop anywhere on the panel (or the collapsed button).
+  const dragProps = {
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(true);
+    },
+    onDragLeave: () => setDragging(false),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      setOpen(true);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleFile(file);
+    },
+  };
 
   async function handleFile(file: File) {
     setError(null);
@@ -66,17 +84,28 @@ export function ResumeImportPanel({ onImported }: { onImported: (profile: Resume
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md border border-dashed border-blue-500/50 text-blue-600 dark:text-blue-400 px-4 py-2 text-sm font-medium w-full mb-8"
+        {...dragProps}
+        className={`rounded-md border border-dashed px-4 py-2 text-sm font-medium w-full mb-8 ${
+          dragging ? "border-blue-400 bg-blue-500/15 text-blue-300" : "border-blue-500/50 text-blue-600 dark:text-blue-400"
+        }`}
       >
-        Have an existing resume? Upload the PDF or paste it to fill this out automatically →
+        {dragging
+          ? "Drop your resume PDF here…"
+          : "Have an existing resume? Upload / drag-and-drop the PDF, or paste it to fill this out automatically →"}
       </button>
     );
   }
 
   const canImport = pdf !== null || text.trim().length >= 50;
+  const isLinkedinUrl = /linkedin\.com\/(in|pub)\//i.test(linkedinUrl);
 
   return (
-    <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 mb-8 space-y-3">
+    <div
+      {...dragProps}
+      className={`rounded-lg border p-4 mb-8 space-y-3 ${
+        dragging ? "border-blue-400 bg-blue-500/15" : "border-blue-500/30 bg-blue-500/5"
+      }`}
+    >
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">Import from an existing resume</h3>
         <button type="button" onClick={() => setOpen(false)} className="text-xs opacity-60 hover:opacity-100">
@@ -141,6 +170,38 @@ export function ResumeImportPanel({ onImported }: { onImported: (profile: Resume
           {loading ? "Importing..." : pdf ? `Import ${pdf.name}` : "Import pasted text"}
         </button>
         {error ? <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p> : null}
+      </div>
+
+      {/* Item 17: LinkedIn guided flow. LinkedIn blocks automated fetching,
+          so this is an honest assistant: detect the URL, walk the user
+          through LinkedIn's own PDF export, then import that PDF here. */}
+      <div className="pt-3 border-t border-blue-500/20">
+        <label className="text-xs opacity-70 block mb-1">Importing from LinkedIn instead?</label>
+        <div className="flex items-center gap-2">
+          <input
+            value={linkedinUrl}
+            onChange={(e) => setLinkedinUrl(e.target.value)}
+            placeholder="https://linkedin.com/in/your-profile"
+            className="flex-1 rounded-md border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm"
+          />
+          {isLinkedinUrl && (
+            <a
+              href={linkedinUrl.startsWith("http") ? linkedinUrl : `https://${linkedinUrl}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm font-medium shrink-0"
+            >
+              Open profile ↗
+            </a>
+          )}
+        </div>
+        {isLinkedinUrl && (
+          <ol className="mt-2 text-xs opacity-70 list-decimal list-inside space-y-0.5">
+            <li>On your LinkedIn profile, click <span className="font-medium">More → Save to PDF</span>.</li>
+            <li>LinkedIn blocks automated access, so that export is the reliable route.</li>
+            <li>Drag the downloaded PDF into this panel — everything imports from there.</li>
+          </ol>
+        )}
       </div>
     </div>
   );

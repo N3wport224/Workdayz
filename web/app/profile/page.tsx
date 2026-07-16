@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadProfile, saveProfile, createDemoProfile } from "@/lib/storage";
+import {
+  loadProfile,
+
+  createDemoProfile,
+  listProfileNames,
+  getActiveProfileName,
+  saveNamedProfile,
+  switchProfile,
+  createNamedProfile,
+  deleteNamedProfile,
+} from "@/lib/storage";
 import { sendProfile } from "@/lib/extension-bridge";
 import { getBridgeStatus } from "@/lib/extension-bridge";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
@@ -22,10 +32,20 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const [importNotice, setImportNotice] = useState("");
+  // Import review (items 15/16/21/22): parsed resume waits here until the
+  // user applies it section-by-section; the pre-import state backs "Undo".
+  const [pendingImport, setPendingImport] = useState<ResumeProfile | null>(null);
+  const [importChecks, setImportChecks] = useState<Record<string, boolean>>({});
+  const [undoSnapshot, setUndoSnapshot] = useState<ResumeProfile | null>(null);
+  // Multiple named profiles (item 14)
+  const [profileNames, setProfileNames] = useState<string[]>(["Default"]);
+  const [activeName, setActiveName] = useState("Default");
 
   useEffect(() => {
     const p = loadProfile();
     if (p) setProfile(p);
+    setProfileNames(listProfileNames());
+    setActiveName(getActiveProfileName());
   }, []);
 
   const updateContact = (field: string, value: string) => {
@@ -82,7 +102,7 @@ export default function ProfilePage() {
   };
 
   const save = () => {
-    saveProfile(profile);
+    saveNamedProfile(profile); // saves the active named profile + legacy mirror
     // Sync to extension
     if (getBridgeStatus() === "detected") {
       sendProfile({
@@ -104,15 +124,112 @@ export default function ProfilePage() {
     setProfile(createDemoProfile());
   };
 
-  /** Claude parsed the uploaded/pasted resume into a full profile — load it
-   * into the form for review. Nothing is saved (or synced to the extension)
-   * until the user clicks Save, so they always review first. */
+  const IMPORT_SECTIONS = ["contact", "summary", "skills", "experience", "education", "certifications", "projects"] as const;
+
+  /** Item 21: cheap OCR sanity flags — garbled glyphs or unreadable "words". */
+  const ocrWarnings = (p: ResumeProfile): string[] => {
+    const texts = [
+      p.summary,
+      ...p.skills,
+      ...p.experience.flatMap((e) => [e.company, e.title, ...e.bullets]),
+      ...p.education.map((e) => e.school),
+      ...p.certifications.map((c) => c.name),
+    ];
+    const warnings: string[] = [];
+    for (const t of texts) {
+      if (!t) continue;
+      if (t.includes("�")) warnings.push(`Garbled characters in: “${t.slice(0, 50)}…”`);
+      else if (/[bcdfghjklmnpqrstvwxz]{6,}/i.test(t)) warnings.push(`Possibly mis-read word in: “${t.slice(0, 50)}…”`);
+    }
+    return [...new Set(warnings)].slice(0, 6);
+  };
+
+  /** Claude parsed the resume — hold it for section-by-section review instead
+   * of silently overwriting anything (items 15/16). */
   const handleImported = (imported: ResumeProfile) => {
-    setProfile(imported);
-    setImportNotice(
-      `Imported ${imported.experience.length} role(s), ${imported.education.length} education, ${imported.certifications.length} certification(s), ${imported.skills.length} skill(s). Review below, fix anything that's off, then click "Save profile" — saving also syncs it to the extension.`,
-    );
+    setPendingImport(imported);
+    setImportChecks(Object.fromEntries(IMPORT_SECTIONS.map((s) => [s, true])));
+    setImportNotice("");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const applyImport = () => {
+    if (!pendingImport) return;
+    setUndoSnapshot(profile); // item 22
+    const next: ResumeProfile = { ...profile };
+    if (importChecks.contact) next.contact = pendingImport.contact;
+    if (importChecks.summary) next.summary = pendingImport.summary;
+    if (importChecks.skills) next.skills = pendingImport.skills;
+    if (importChecks.experience) next.experience = pendingImport.experience;
+    if (importChecks.education) next.education = pendingImport.education;
+    if (importChecks.certifications) next.certifications = pendingImport.certifications;
+    if (importChecks.projects) next.projects = pendingImport.projects;
+    setProfile(next);
+    setPendingImport(null);
+    setImportNotice(
+      `Imported ${next.experience.length} role(s), ${next.education.length} education, ${next.certifications.length} certification(s), ${next.skills.length} skill(s). Review below, then click "Save profile" — saving also syncs to the extension.`,
+    );
+  };
+
+  const undoImport = () => {
+    if (!undoSnapshot) return;
+    setProfile(undoSnapshot);
+    setUndoSnapshot(null);
+    setImportNotice("Import undone — the profile is back to its previous state (unsaved).");
+  };
+
+  /** Item 18: headshot stored as a small data URL, never in the ATS PDF. */
+  const handlePhoto = (file: File) => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 128;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const scale = Math.max(size / img.width, size / img.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, (size - img.width * scale) / 2, (size - img.height * scale) / 2, img.width * scale, img.height * scale);
+      setProfile((p) => ({ ...p, photoDataUrl: canvas.toDataURL("image/jpeg", 0.8) }));
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(file);
+  };
+
+  // --- Item 14: named profile switching ---
+  const handleSwitchProfile = (name: string) => {
+    saveNamedProfile(profile); // don't lose unsaved edits on the current one
+    const next = switchProfile(name);
+    if (next) {
+      setProfile(next);
+      setActiveName(name);
+      setImportNotice("");
+    }
+  };
+
+  const handleNewProfile = () => {
+    const name = prompt('Name for the new profile (e.g. "Warehouse resume"):')?.trim();
+    if (!name) return;
+    saveNamedProfile(profile);
+    const created = createNamedProfile(name, profile);
+    if (!created) {
+      alert("A profile with that name already exists.");
+      return;
+    }
+    setProfileNames(listProfileNames());
+    setActiveName(name);
+    setProfile(created);
+  };
+
+  const handleDeleteProfile = () => {
+    if (profileNames.length <= 1) return;
+    if (!confirm(`Delete profile "${activeName}"? This cannot be undone.`)) return;
+    deleteNamedProfile(activeName);
+    setProfileNames(listProfileNames());
+    const nowActive = getActiveProfileName();
+    setActiveName(nowActive);
+    const p = loadProfile();
+    if (p) setProfile(p);
   };
 
   return (
@@ -123,6 +240,28 @@ export default function ProfilePage() {
           <button onClick={loadDemo} className="btn btn-secondary">Load demo</button>
           <button onClick={save} className="btn btn-primary">{saved ? "✓ Saved!" : "Save profile"}</button>
         </div>
+      </div>
+
+      {/* Item 14: multiple named profiles */}
+      <div className="card flex flex-wrap items-center gap-3 text-sm">
+        <label htmlFor="profileSwitcher" className="text-gray-400 !mb-0">Profile:</label>
+        <select
+          id="profileSwitcher"
+          value={activeName}
+          onChange={(e) => handleSwitchProfile(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-sm w-auto"
+        >
+          {profileNames.map((n) => (
+            <option key={n} value={n}>{n}</option>
+          ))}
+        </select>
+        <button onClick={handleNewProfile} className="btn btn-secondary btn-sm">+ New (copy current)</button>
+        {profileNames.length > 1 && (
+          <button onClick={handleDeleteProfile} className="btn btn-secondary btn-sm text-red-400">Delete</button>
+        )}
+        <span className="text-xs text-gray-500">
+          Keep separate resumes (e.g. &ldquo;Warehouse&rdquo; vs &ldquo;Office&rdquo;) — the active one feeds tailoring &amp; autofill.
+        </span>
       </div>
 
       {/* The whole journey at a glance */}
@@ -143,11 +282,96 @@ export default function ProfilePage() {
           save, and this becomes the base resume the extension autofills from.
         </p>
         <ResumeImportPanel onImported={handleImported} />
-        {importNotice && (
-          <div className="p-3 bg-green-950/30 border border-green-500/30 rounded-lg text-sm text-green-400">
-            ✅ {importNotice}
+
+        {/* Items 15/16/21: review the parsed resume before anything changes */}
+        {pendingImport && (
+          <div className="p-4 bg-blue-950/30 border border-blue-500/30 rounded-lg space-y-3">
+            <p className="text-sm font-medium text-blue-300">
+              Resume parsed — choose which sections to bring in. Nothing is overwritten until you click Apply.
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {IMPORT_SECTIONS.map((section) => {
+                const counts: Record<string, string> = {
+                  contact: `${pendingImport.contact.firstName} ${pendingImport.contact.lastName} · ${pendingImport.contact.email}`,
+                  summary: pendingImport.summary ? `${pendingImport.summary.split(/\s+/).length} words` : "empty",
+                  skills: `${pendingImport.skills.length} skill(s)`,
+                  experience: `${pendingImport.experience.length} role(s)`,
+                  education: `${pendingImport.education.length} entr(ies)`,
+                  certifications: `${pendingImport.certifications.length} cert(s)`,
+                  projects: `${pendingImport.projects.length} project(s)`,
+                };
+                return (
+                  <label key={section} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={importChecks[section] ?? true}
+                      onChange={(e) => setImportChecks((c) => ({ ...c, [section]: e.target.checked }))}
+                      className="w-4 h-4"
+                    />
+                    <span className="capitalize">{section}</span>
+                    <span className="text-xs text-gray-500">{counts[section]}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {ocrWarnings(pendingImport).length > 0 && (
+              <div className="p-2 bg-amber-950/40 border border-amber-500/30 rounded text-xs text-amber-300 space-y-1">
+                <p className="font-medium">⚠ Possible mis-reads — double-check these after applying:</p>
+                {ocrWarnings(pendingImport).map((w, i) => (
+                  <p key={i}>{w}</p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={applyImport} className="btn btn-primary btn-sm">Apply selected sections</button>
+              <button onClick={() => setPendingImport(null)} className="btn btn-secondary btn-sm">Cancel import</button>
+            </div>
           </div>
         )}
+
+        {importNotice && (
+          <div className="p-3 bg-green-950/30 border border-green-500/30 rounded-lg text-sm text-green-400 flex items-center gap-3">
+            <span className="flex-1">✅ {importNotice}</span>
+            {undoSnapshot && (
+              <button onClick={undoImport} className="btn btn-secondary btn-sm shrink-0">↩ Undo import</button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Item 18: optional headshot — stored only, never in the ATS PDF */}
+      <div className="card">
+        <h2 className="font-semibold mb-1">Photo (optional)</h2>
+        <p className="text-sm text-gray-400 mb-3">
+          Some non-US employers expect a headshot. It is stored locally and never added to the
+          ATS-safe PDF — photos can hurt US applications.
+        </p>
+        <div className="flex items-center gap-4">
+          {profile.photoDataUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profile.photoDataUrl} alt="Headshot preview" className="w-16 h-16 rounded-full object-cover border border-gray-700" />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-600">—</div>
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            className="text-sm w-auto"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handlePhoto(f);
+              e.target.value = "";
+            }}
+          />
+          {profile.photoDataUrl && (
+            <button
+              onClick={() => setProfile((p) => ({ ...p, photoDataUrl: undefined }))}
+              className="btn btn-secondary btn-sm"
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Contact info */}
@@ -163,12 +387,20 @@ export default function ProfilePage() {
             <input value={profile.contact.lastName} onChange={(e) => updateContact("lastName", e.target.value)} />
           </div>
           <div>
+            <label>Preferred Name (optional — &ldquo;goes by&rdquo;)</label>
+            <input value={profile.contact.preferredName ?? ""} onChange={(e) => updateContact("preferredName", e.target.value)} />
+          </div>
+          <div>
             <label>Email</label>
             <input type="email" value={profile.contact.email} onChange={(e) => updateContact("email", e.target.value)} />
           </div>
           <div>
             <label>Phone</label>
             <input value={profile.contact.phone} onChange={(e) => updateContact("phone", e.target.value)} />
+          </div>
+          <div>
+            <label>Work Phone (optional)</label>
+            <input value={profile.contact.workPhone ?? ""} onChange={(e) => updateContact("workPhone", e.target.value)} />
           </div>
           <div>
             <label>City</label>

@@ -4,8 +4,12 @@
 export interface ContactInfo {
   firstName: string;
   lastName: string;
+  /** "Goes by" name some Workday tenants ask for. */
+  preferredName?: string;
   email: string;
   phone: string;
+  /** Secondary/work phone — Workday sometimes asks for both. */
+  workPhone?: string;
   address: string;
   city: string;
   state: string;

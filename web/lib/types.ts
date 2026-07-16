@@ -4,8 +4,12 @@
 export interface ContactInfo {
   firstName: string;
   lastName: string;
+  /** "Goes by" name some Workday tenants ask for (item 20). */
+  preferredName?: string;
   email: string;
   phone: string;
+  /** Secondary/work phone — Workday sometimes asks for both (item 19). */
+  workPhone?: string;
   address: string;
   city: string;
   state: string;
@@ -95,6 +99,9 @@ export interface ResumeProfile {
   education: EducationEntry[];
   projects: ProjectEntry[];
   certifications: CertificationEntry[];
+  /** Optional headshot (small data URL). Stored for regions whose employers
+   * expect one; NEVER rendered into the ATS-safe PDF (item 18). */
+  photoDataUrl?: string;
 }
 
 export interface TailoredApplication {
