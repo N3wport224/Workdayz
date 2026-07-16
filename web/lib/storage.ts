@@ -17,7 +17,9 @@ export interface ExtensionSettings {
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
   anthropicKey: "",
-  model: "claude-sonnet-4-20250514",
+  // Empty = use the server's ANTHROPIC_MODEL/default; only send an override
+  // when the user actually picks one in Settings.
+  model: "",
   autoSyncExtension: true,
 };
 

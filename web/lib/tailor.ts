@@ -5,9 +5,7 @@
  * skills, and experience bullets for ATS match, then scores the result.
  */
 
-import type { ResumeProfile, TailoredApplication, TailoredVariant, FitAnalysis, JobPosting, AtsBreakdown, InterviewPrep, OutreachMessages } from "./types";
-import { scoreResume } from "./ats-score";
-import { renderResumeText } from "./pdf-generator";
+import type { ResumeProfile, TailoredVariant, FitAnalysis, JobPosting, InterviewPrep, OutreachMessages } from "./types";
 
 interface TailorResult {
   summary: string;
@@ -34,7 +32,7 @@ export async function tailor(
   profile: ResumeProfile,
   job: JobPosting,
   anthropicKey: string,
-  model = "claude-sonnet-4-20250514",
+  model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
 ): Promise<TailorResult> {
   const context = buildTailorContext(profile, job);
   
@@ -132,7 +130,7 @@ export async function generateVariants(
   job: JobPosting,
   anthropicKey: string,
   count: number,
-  model = "claude-sonnet-4-20250514",
+  model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
 ): Promise<TailoredVariant[]> {
   const variants: TailoredVariant[] = [];
   const emphasisOptions = ["technical depth", "leadership impact", "business outcomes", "innovation", "cross-functional collaboration"];
@@ -187,7 +185,7 @@ export async function generateInterviewPrep(
   profile: ResumeProfile,
   job: JobPosting,
   anthropicKey: string,
-  model = "claude-sonnet-4-20250514",
+  model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
 ): Promise<InterviewPrep[]> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -223,7 +221,7 @@ export async function generateOutreachMessages(
   profile: ResumeProfile,
   job: JobPosting,
   anthropicKey: string,
-  model = "claude-sonnet-4-20250514",
+  model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
 ): Promise<OutreachMessages> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -260,7 +258,7 @@ export async function answerQuestions(
   profile: ResumeProfile,
   job: JobPosting,
   anthropicKey: string,
-  model = "claude-sonnet-4-20250514",
+  model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
 ): Promise<{ question: string; answer: string }[]> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",

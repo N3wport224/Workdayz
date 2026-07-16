@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { loadProfile, loadApplications } from "@/lib/storage";
 import type { ResumeProfile, TailoredApplication } from "@/lib/types";
-import { pingExtension, getBridgeStatus, onBridgeStatusChange } from "@/lib/extension-bridge";
+import { getBridgeStatus, onBridgeStatusChange } from "@/lib/extension-bridge";
 import type { BridgeStatus } from "@/lib/extension-bridge";
 
 export default function HomePage() {

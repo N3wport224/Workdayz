@@ -41,7 +41,6 @@ function expandTerms(terms: string[]): Set<string> {
 }
 
 function extractKeywords(text: string): { term: string; weight: number }[] {
-  const tokens = tokenize(text);
   const freq = new Map<string, { count: number; weight: number }>();
 
   // Multi-word phrases (1-4 words)
@@ -59,7 +58,7 @@ function extractKeywords(text: string): { term: string; weight: number }[] {
   }
 
   return Array.from(freq.entries())
-    .filter(([_, meta]) => meta.count > 0) // keep everything for now
+    .filter(([, meta]) => meta.count > 0) // keep everything for now
     .map(([term, meta]) => ({ term, weight: meta.weight }));
 }
 

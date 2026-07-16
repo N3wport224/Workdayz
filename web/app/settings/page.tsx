@@ -5,7 +5,7 @@ import { loadSettings, saveSettings, exportAllData, importAllData, wipeAllData }
 import type { ExtensionSettings } from "@/lib/storage";
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<ExtensionSettings>({ anthropicKey: "", model: "claude-sonnet-4-20250514", autoSyncExtension: true });
+  const [settings, setSettings] = useState<ExtensionSettings>({ anthropicKey: "", model: "", autoSyncExtension: true });
   const [importJson, setImportJson] = useState("");
   const [message, setMessage] = useState("");
 
@@ -70,9 +70,10 @@ export default function SettingsPage() {
           value={settings.model}
           onChange={(e) => setSettings({ ...settings, model: e.target.value })}
         >
-          <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (Best balance)</option>
-          <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5 (Faster, cheaper)</option>
-          <option value="claude-opus-4-20250514">Claude Opus 4 (Best quality, most expensive)</option>
+          <option value="">Server default</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5 (Best balance)</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 (Faster, cheaper)</option>
+          <option value="claude-opus-4-8">Claude Opus 4.8 (Best quality, most expensive)</option>
         </select>
       </div>
 

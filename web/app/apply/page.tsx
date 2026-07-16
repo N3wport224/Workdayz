@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadProfile, saveApplication, loadApplications } from "@/lib/storage";
+import { loadProfile, loadSettings, saveApplication } from "@/lib/storage";
 import { sendAutofillPackage, getBridgeStatus } from "@/lib/extension-bridge";
-import { scoreResume } from "@/lib/ats-score";
 import { segmentByKeywords } from "@/lib/highlight-keywords";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
 import type { ResumeProfile, JobPosting, TailoredApplication, TailoredVariant, AtsBreakdown } from "@/lib/types";
@@ -33,6 +32,8 @@ export default function ApplyPage() {
   const [statusMessage, setStatusMessage] = useState("");
   const [error, setError] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [hasServerKey, setHasServerKey] = useState(true); // optimistic until checked, so we don't flash a false error
   const [showHighlights, setShowHighlights] = useState(false);
   const [copiedMissing, setCopiedMissing] = useState(false);
 
@@ -45,6 +46,15 @@ export default function ApplyPage() {
     if (params.get("from") === "extension") {
       setStatusMessage("Job posting scraped from the extension — fill in the details below.");
     }
+    // A key/model chosen in Settings (browser-only) is sent per-request; an
+    // empty model falls through to the server's ANTHROPIC_MODEL/default.
+    const settings = loadSettings();
+    setApiKey(settings.anthropicKey);
+    setModel(settings.model);
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((data) => setHasServerKey(Boolean(data.apiKeyConfigured)))
+      .catch(() => setHasServerKey(true)); // don't block tailoring on a health-check network blip
   }, []);
 
   const fetchJobUrl = async () => {
@@ -75,8 +85,8 @@ export default function ApplyPage() {
 
   const tailor = async () => {
     if (!profile) return;
-    if (!apiKey && !process.env.NEXT_PUBLIC_HAS_API_KEY) {
-      setError("Enter your Anthropic API key in Settings.");
+    if (!apiKey && !hasServerKey) {
+      setError("Enter your Anthropic API key in Settings, or set ANTHROPIC_API_KEY in .env.local.");
       return;
     }
     if (!jobDescription || jobDescription.length < 50) {
@@ -103,6 +113,7 @@ export default function ApplyPage() {
             sourceUrl: jobUrl || undefined,
           },
           anthropicKey: apiKey || undefined,
+          model: model || undefined,
         }),
       });
 

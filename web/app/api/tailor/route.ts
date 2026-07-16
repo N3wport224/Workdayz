@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tailor } from "@/lib/tailor";
 import { scoreResume } from "@/lib/ats-score";
-import { renderResumeText } from "@/lib/pdf-generator";
 import type { ResumeProfile, JobPosting } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
