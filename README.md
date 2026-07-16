@@ -180,6 +180,64 @@ track its status over time.
   drafts) reuse cached prompt tokens at a fraction of the price; the cost
   estimator prices cache hits correctly.
 
+### Extension v0.2.0 — 30 New Autofill Features
+
+The extension now packs an additional 30 capabilities across three new modules
+(`fill-engine.ts`, `features.ts`, `feature-audit.ts`) wired into the existing
+autofill pipeline:
+
+| # | Feature | Module | What it does |
+|---|---------|--------|-------------|
+| 1 | **Field value normalizer** | fill-engine | Detects and formats phone numbers, names, addresses, ZIP codes, URLs, LinkedIn profiles, currencies, and dates based on field label before writing |
+| 2 | **Incremental fill planning** | fill-engine | Pre‑scans fields and generates a plan of what would be filled vs skipped vs mismatched — lets the UI show a diff before executing |
+| 3 | **Confidence score** | fill-engine | After every fill run, reports the percentage of identified fillable fields that were successfully written (Excellent/Good/Fair/Low) |
+| 4 | **Tenant detection** | fill-engine | Identifies the Workday tenant from the URL hostname and activates field‑label overrides (Xcel Energy, Amazon, Target, etc.) |
+| 5 | **International synonym expansion** | fill-engine | Augments every synonym list with known international variants (French, Spanish, German labels) so the fill works on non‑English career sites |
+| 6 | **Section‑growth retry** | fill-engine | Clicks the "Add" button with exponential backoff (up to 3 attempts) before giving up — compensates for slow SPA rendering |
+| 7 | **Batch fill all** | fill-engine | Runs a complete multi‑section autofill in one call with optional progress callbacks |
+| 8 | **Required‑field pre‑scan** | fill-engine | Before filling, scans the form for required fields and reports whether the package has data for each one |
+| 9 | **Fill timeout guard** | fill-engine | Wraps any fill operation in a 30‑second timeout so a stuck field never hangs the widget forever |
+| 10 | **Field type classifier** | fill-engine | Inspects autocomplete attributes, input types, and label text to classify fields as phone/email/name/address/date/number/URL/select |
+| 11 | **Format preview** | fill-engine | Shows "raw value → formatted value" so the user sees how a value will be transformed before the fill |
+| 12 | **Wizard step detection** | fill-engine | Identifies which step of the Workday multi‑step wizard is currently visible (step number, total steps, name) |
+| 13 | **Section fill status** | fill-engine | Returns a per‑section summary (Contact, Experience, Education, Certs) with filled/total/complete flags |
+| 14 | **Package staleness checker** | fill-engine | Computes the age of the loaded package in days and warns if it's ≥7 days (stale) or ≥30 days (consider re‑tailoring) |
+| 15 | **Aggregate fill runs** | fill-engine | Combines multiple AutofillRunSummary objects into one — useful when filling a page in several passes |
+| 16 | **Shortcut manager** | features | Queries `chrome.commands.getAll()` and reports the current keyboard shortcut mapping from the extension popup |
+| 17 | **Screen‑reader announcements** | features | Creates a `aria-live="polite"` announcer element and posts fill‑result messages so assistive technology users get spoken feedback |
+| 18 | **Form vs profile diff** | features | Compares every contact field's current form value against the profile's stored value and reports matches/mismatches |
+| 19 | **Autofill session tracking** | features | Starts a session (UUID, hostname, package info) when a fill begins; updates step/field counts; persisted to chrome.storage |
+| 20 | **Error recovery with fallbacks** | features | Attempts the primary value, verifies it was accepted, and tries alternative values in sequence if the field rejects it |
+| 21 | **Local usage analytics** | features | Tracks total autofills, fields filled, files attached, per‑tenant breakdown — all local, never transmitted |
+| 22 | **Fill templates** | features | Save/load/delete named sets of custom fill rules; apply them as a group |
+| 23 | **Batch template processor** | features | Applies multiple templates in sequence with per‑template progress reporting |
+| 24 | **In‑page toast notifications** | features | Animated, color‑coded toast messages that appear above the widget for success/warning/error/info feedback |
+| 25 | **Field‑to‑data mapper** | features | Generates a list mapping every form field label to its profile data source and confidence level |
+| 26 | **Data validation engine** | features | Checks the package for missing first/last name, invalid email, missing job title/company, empty education entries — returns actionable warnings |
+| 27 | **Fill history timeline** | features | Records every field fill in sessionStorage (up to 100 entries) with timestamps for per‑page audit trail |
+| 28 | **Structured fill report export** | features | Generates a JSON report with package info, field count, validation warnings, and fill history; copies to clipboard |
+| 29 | **Import field values from text** | features | Parses `label = value` lines from clipboard and fills matching fields on the current page |
+| 30 | **Settings manager** | features | Persistent user preferences: auto‑fill on page load, confidence score display, fill highlighting, retry count, timeout, theme |
+
+### Self‑Diagnostics Audit Engine
+
+The extension now includes a built‑in audit engine (`feature-audit.ts`) that
+runs the following health checks:
+
+| Check | What it verifies |
+|-------|-----------------|
+| `chrome.storage.local` | Storage is accessible, reports key count |
+| `chrome.runtime` | Extension runtime is active, reports extension ID |
+| `chrome.tabs` | Tab query succeeds, reports active tab URL |
+| `chrome.commands` | Keyboard shortcuts are registered |
+| `workday-site-detection` | Content script is on a Workday career site |
+| `dom-access` | `document.body` is reachable |
+| `storage-usage` | Bytes used vs quota |
+
+Run the audit from any context to get a version‑stamped `AuditReport` with
+pass/fail/warn per check. The report contains no personal data — only
+extension health metadata.
+
 ## Safety notes
 
 - **No stored credentials.** The extension has no login flow and never sees

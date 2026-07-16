@@ -4,112 +4,297 @@
     <meta charset="utf-8" />
     <title>Workdayz</title>
     <style>
+      :root {
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --success: #059669;
+        --warning: #d97706;
+        --danger: #dc2626;
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --border: #e2e8f0;
+        --text: #0f172a;
+        --text-secondary: #64748b;
+        --radius: 8px;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        width: 300px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        padding: 14px;
-        color: #111827;
+        width: 340px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.5;
       }
-      h1 {
-        font-size: 15px;
-        margin: 0 0 10px;
+      .header {
+        background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+        color: white;
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
       }
-      section {
-        margin-bottom: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid #e5e7eb;
+      .header h1 {
+        font-size: 16px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
       }
-      section:last-child {
-        border-bottom: none;
+      .header .badge {
+        font-size: 10px;
+        background: rgba(255,255,255,0.2);
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-weight: 500;
       }
+      .content { padding: 12px 16px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .card-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        margin-bottom: 6px;
+      }
+      .status-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        font-size: 12px;
+        line-height: 1.4;
+      }
+      .status-row .icon {
+        flex-shrink: 0;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+        margin-top: 1px;
+      }
+      .status-row .icon.ready { background: #d1fae5; color: #065f46; }
+      .status-row .icon.empty { background: #fef3c7; color: #92400e; }
+      .status-row .icon.error { background: #fee2e2; color: #991b1b; }
+      .status-row .icon.info { background: #dbeafe; color: #1e40af; }
+      .status-text { flex: 1; }
+      .status-text .label { font-weight: 600; }
+      .status-text .detail { color: var(--text-secondary); }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 9px 12px;
+        border: none;
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: background 0.15s, opacity 0.15s;
+      }
+      .btn:disabled { opacity: 0.5; cursor: default; }
+      .btn-primary { background: var(--primary); color: white; }
+      .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+      .btn-success { background: var(--success); color: white; }
+      .btn-success:hover:not(:disabled) { background: #047857; }
+      .btn-secondary { background: #e2e8f0; color: var(--text); }
+      .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }
+      .btn-danger { background: #fee2e2; color: var(--danger); }
+      .btn-danger:hover:not(:disabled) { background: #fecaca; }
+      .btn-sm { padding: 6px 10px; font-size: 11px; }
+      .btn-group { display: flex; gap: 6px; }
+      .btn-group .btn { flex: 1; }
+      input, textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 7px 9px;
+        font-size: 12px;
+        font-family: inherit;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--text);
+        transition: border-color 0.15s;
+      }
+      input:focus, textarea:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
+      }
+      textarea { resize: vertical; min-height: 48px; }
       label {
         display: block;
         font-size: 11px;
         font-weight: 600;
-        opacity: 0.7;
-        margin-bottom: 4px;
+        color: var(--text-secondary);
+        margin-bottom: 3px;
+        margin-top: 8px;
       }
-      input,
-      textarea {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 6px 8px;
-        font-size: 12px;
-        border: 1px solid #d1d5db;
-        border-radius: 6px;
-        margin-bottom: 6px;
-      }
-      button {
-        width: 100%;
-        font-size: 12px;
-        font-weight: 600;
-        background: #2563eb;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 10px;
-        cursor: pointer;
-      }
-      button.secondary {
-        background: #e5e7eb;
-        color: #111827;
-      }
-      textarea {
-        font-family: inherit;
-        resize: vertical;
-      }
-      #status,
-      #profileStatus,
-      #rulesStatus,
-      #autofillStatus {
-        font-size: 12px;
-        opacity: 0.85;
+      label:first-child { margin-top: 0; }
+      .divider { height: 1px; background: var(--border); margin: 10px 0; }
+      .feedback {
+        font-size: 11px;
         margin-top: 6px;
+        padding: 6px 8px;
+        border-radius: 6px;
         line-height: 1.4;
       }
+      .feedback.success { background: #d1fae5; color: #065f46; }
+      .feedback.warning { background: #fef3c7; color: #92400e; }
+      .feedback.error { background: #fee2e2; color: #991b1b; }
+      .feedback.info { background: #dbeafe; color: #1e40af; }
+      .feedback.hidden { display: none; }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .summary-item {
+        background: var(--bg);
+        border-radius: 6px;
+        padding: 6px 8px;
+        text-align: center;
+      }
+      .summary-item .num {
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .summary-item .num.green { color: var(--success); }
+      .summary-item .num.amber { color: var(--warning); }
+      .summary-item .num.red { color: var(--danger); }
+      .summary-item .desc {
+        font-size: 10px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .collapsible { cursor: pointer; user-select: none; }
+      .collapsible:hover { opacity: 0.8; }
+      .collapsible-content { display: none; margin-top: 6px; }
+      .collapsible-content.open { display: block; }
+      .detail-list {
+        list-style: none;
+        font-size: 11px;
+        color: var(--text-secondary);
+      }
+      .detail-list li {
+        padding: 2px 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .detail-list li::before {
+        content: "•";
+        color: var(--primary);
+      }
+      .hidden { display: none !important; }
+      .fade-in { animation: fadeIn 0.2s ease-in; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
     </style>
   </head>
   <body>
-    <h1>Workdayz</h1>
+    <div class="header">
+      <h1>⚡ Workdayz</h1>
+      <span class="badge" id="versionBadge">v1</span>
+    </div>
 
-    <section>
-      <label for="webAppUrl">Web app URL</label>
-      <input id="webAppUrl" type="text" placeholder="http://localhost:3000" />
-      <button id="connectBtn">Connect</button>
-      <div id="connectStatus"></div>
-    </section>
-
-    <section>
-      <button id="openAppBtn" class="secondary">Open Workdayz web app</button>
-      <div id="status">Loading current application...</div>
-      <div id="profileStatus"></div>
-    </section>
-
-    <section>
-      <label for="hearAboutUs">&ldquo;How did you hear about us?&rdquo; default</label>
-      <input id="hearAboutUs" type="text" placeholder="e.g. LinkedIn" />
-      <label for="customRules">Custom answers (one per line: field label = value)</label>
-      <textarea id="customRules" rows="3" placeholder="Desired salary = 85000&#10;Notice period = 2 weeks"></textarea>
-      <label for="tenantRules" id="tenantRulesLabel" style="display: none">Rules only for this site</label>
-      <textarea id="tenantRules" rows="2" style="display: none" placeholder="Employee ID = N/A"></textarea>
-      <button id="saveRulesBtn" class="secondary">Save answers</button>
-      <div style="display: flex; gap: 6px; margin-top: 6px">
-        <button id="exportRulesBtn" class="secondary" title="Copies all rules as JSON to the clipboard">Export rules</button>
-        <button id="importRulesBtn" class="secondary" title="Paste a rules JSON export, then apply it">Import rules</button>
+    <div class="content">
+      <!-- Connection Status -->
+      <div class="card">
+        <div class="card-title">Connection</div>
+        <div class="status-row" id="connectionStatus">
+          <div class="icon info">i</div>
+          <div class="status-text">
+            <span class="label" id="connectionLabel">Checking connection...</span>
+            <div class="detail" id="connectionDetail"></div>
+          </div>
+        </div>
       </div>
-      <textarea id="importArea" rows="3" style="display: none; margin-top: 6px" placeholder='Paste the exported rules JSON here, then click "Import rules" again'></textarea>
-      <div id="rulesStatus"></div>
-    </section>
 
-    <section>
-      <button id="autofillBtn">Autofill active tab</button>
-      <div id="autofillStatus"></div>
-    </section>
+      <!-- Application Status -->
+      <div class="card">
+        <div class="card-title">Application Package</div>
+        <div id="packageStatus">
+          <div class="status-row">
+            <div class="icon empty">!</div>
+            <div class="status-text">
+              <span class="label">No package loaded</span>
+              <div class="detail">Generate a tailored application in the web app first.</div>
+            </div>
+          </div>
+        </div>
+        <div id="packageSummary" class="summary-grid hidden"></div>
+      </div>
 
-    <section>
-      <button id="clearBtn" class="secondary">Clear stored application data</button>
-      <div id="clearStatus"></div>
-    </section>
+      <!-- Profile Status -->
+      <div class="card">
+        <div class="card-title">Base Profile</div>
+        <div id="profileStatus">
+          <div class="status-row">
+            <div class="icon empty">!</div>
+            <div class="status-text">
+              <span class="label">No profile synced</span>
+              <div class="detail">Save your resume on the web app's Resume page.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Autofill Actions -->
+      <div class="card">
+        <div class="card-title">Actions</div>
+        <button id="autofillBtn" class="btn btn-primary">▶ Autofill this page</button>
+        <div id="autofillFeedback" class="feedback hidden"></div>
+        <div id="autofillDetails" class="collapsible-content"></div>
+        <div class="btn-group" style="margin-top: 8px">
+          <button id="openAppBtn" class="btn btn-secondary btn-sm">Open web app</button>
+          <button id="clearBtn" class="btn btn-danger btn-sm">Clear data</button>
+        </div>
+      </div>
+
+      <!-- Custom Rules -->
+      <div class="card">
+        <div class="card-title collapsible" id="rulesToggle">▼ Custom Answers</div>
+        <div class="collapsible-content open" id="rulesContent">
+          <label for="hearAboutUs">"How did you hear about us?" default</label>
+          <input id="hearAboutUs" type="text" placeholder="e.g. LinkedIn" />
+          <label for="customRules">Global rules (one per line: label = value)</label>
+          <textarea id="customRules" rows="2" placeholder="Desired salary = 85000"></textarea>
+          <label for="tenantRules" id="tenantRulesLabel" style="display: none">Rules only for this site</label>
+          <textarea id="tenantRules" rows="2" style="display: none" placeholder="Employee ID = N/A"></textarea>
+          <div class="btn-group" style="margin-top: 6px">
+            <button id="saveRulesBtn" class="btn btn-secondary btn-sm">Save</button>
+            <button id="exportRulesBtn" class="btn btn-secondary btn-sm">Export</button>
+            <button id="importRulesBtn" class="btn btn-secondary btn-sm">Import</button>
+          </div>
+          <textarea id="importArea" rows="2" style="display: none; margin-top: 6px" placeholder='Paste exported rules JSON, then click "Import" again'></textarea>
+          <div id="rulesFeedback" class="feedback hidden"></div>
+        </div>
+      </div>
+
+      <!-- Web App Connection -->
+      <div class="card">
+        <div class="card-title collapsible" id="connectToggle">▼ Web App URL</div>
+        <div class="collapsible-content open" id="connectContent">
+          <label for="webAppUrl">URL</label>
+          <input id="webAppUrl" type="text" placeholder="http://localhost:3000" />
+          <button id="connectBtn" class="btn btn-secondary btn-sm">Connect</button>
+          <div id="connectFeedback" class="feedback hidden"></div>
+        </div>
+      </div>
+    </div>
 
     <script src="popup.js"></script>
   </body>

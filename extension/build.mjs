@@ -22,6 +22,7 @@ const builds = [
     ],
     format: "iife",
   },
+  // New feature modules are bundled as part of workday.ts via imports
 ];
 
 copyFileSync("manifest.json", "dist/manifest.json");

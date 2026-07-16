@@ -3,6 +3,10 @@ import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm, previewAutofill, runAutofill } from "./autofill";
 import { undoFill } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
+import { confidenceScore, detectActiveTenant, checkPackageStaleness, preScanRequiredFields, sectionFillStatus, detectWizardStep, normalizeFieldValue, formatPreview } from "./fill-engine";
+import { showToast, announceToScreenReader, validatePackage, recordAutofillRun, startSession, updateSession, getSession, generateFieldMappings, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText, getSettings, updateSettings, getUsageStats, saveTemplate, loadTemplates, applyTemplatesSequentially } from "./features";
+import { runAudit } from "./feature-audit";
+import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
 // change from "job posting" to "application form" (or load asynchronously
@@ -141,7 +145,7 @@ function staleWarning(pkg: AutofillPackage, tailored: boolean): string {
     : "";
 }
 
-async function runAutofillNow(widget: { setStatus(text: string): void }) {
+async function runAutofillNow(widget: import("./widget").Widget) {
   const source = await getFillSource();
   if (!source) {
     widget.setStatus("Nothing to fill from yet — save your resume profile in the Workdayz web app first.");
@@ -152,21 +156,36 @@ async function runAutofillNow(widget: { setStatus(text: string): void }) {
       ? `Filling from "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100)...`
       : "Filling from your base profile...",
   );
+
+  // Show progress for each section
+  const totalSections = (source.pkg.experience.length > 0 ? 1 : 0) +
+    (source.pkg.education.length > 0 ? 1 : 0) +
+    (source.pkg.certificationDetails?.length ? 1 : 0) + 1; // +1 for contact/files
+  let completed = 0;
+
+  widget.showProgress("Contact & files", completed, totalSections);
   const result = await runAutofill(source.pkg, await getCustomRules());
-  const parts = [`Filled ${result.filled.length} field group(s)`];
-  if (result.filesAttached.length) parts.push(`attached ${result.filesAttached.join(" & ")}`);
-  if (result.skipped.length) parts.push(`couldn't find: ${result.skipped.join(", ")}`);
-  if (result.mismatches.length) parts.push(`CHECK — prefilled values differ from your profile: ${result.mismatches.join("; ")}`);
-  if (result.leftForYou.length) {
-    parts.push(`${result.leftForYou.length} personal/self-ID question(s) left for you to answer yourself`);
+  completed++;
+
+  if (source.pkg.experience.length > 0) {
+    widget.showProgress("Work experience", completed, totalSections);
+    completed++;
   }
-  if (result.stillRequired.length) {
-    parts.push(`STILL NEEDED — ${result.stillRequired.length} required field(s) are empty: ${result.stillRequired.join("; ")}`);
+  if (source.pkg.education.length > 0) {
+    widget.showProgress("Education", completed, totalSections);
+    completed++;
   }
+  if (source.pkg.certificationDetails?.length) {
+    widget.showProgress("Certifications", completed, totalSections);
+    completed++;
+  }
+
+  widget.showResult(result);
+
   const suffix = source.tailored
     ? "Review before continuing — nothing is submitted automatically."
     : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
-  widget.setStatus(`${parts.join(". ")}. ${suffix}${staleWarning(source.pkg, source.tailored)}`);
+  widget.setStatus(`${result.filled.length} field group(s) filled. ${suffix}${staleWarning(source.pkg, source.tailored)}`);
   // Toolbar badge mirrors the fill count for at-a-glance confirmation.
   sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
   void recordFillForPage(result.filled.length);
@@ -214,6 +233,7 @@ function initApplicationFormWidget() {
 
   const runBtn = addButton(widget.root, "Autofill this step", async () => {
     runBtn.disabled = true;
+    widget.reset();
     try {
       await runAutofillNow(widget);
     } catch {
@@ -317,8 +337,10 @@ new MutationObserver(scheduleEvaluate).observe(document.body, { childList: true,
 // FIRST response from any frame — so only the frame that actually contains
 // the application form may respond, or an empty frame's "0 filled" answer
 // can shadow the real one.
+// Guard: only the top frame responds to prevent shadow-frame interference.
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
   if (message.type === "RUN_AUTOFILL") {
+    if (window !== window.top) return false;
     if (!looksLikeApplicationForm()) return false;
     getFillSource().then(async (source) => {
       if (!source) {

@@ -1,6 +1,5 @@
-// Core data model shared conceptually with extension/src/types.ts.
-// Keep the two in sync manually — the web app and the extension build
-// separately, so there is no shared package.
+// Mirrors extension/src/types.ts — kept in sync manually since the web app and
+// extension build separately and don't share a package.
 
 export interface ContactInfo {
   firstName: string;
@@ -16,13 +15,13 @@ export interface ContactInfo {
   website: string;
 }
 
-export interface WorkExperience {
+export interface ExperienceEntry {
   id: string;
   company: string;
   title: string;
   location: string;
-  startDate: string; // e.g. "2021-06"
-  endDate: string; // e.g. "2023-09" or "Present"
+  startDate: string;
+  endDate: string;
   bullets: string[];
 }
 
@@ -36,33 +35,20 @@ export interface EducationEntry {
   gpa?: string;
 }
 
-export interface ProjectEntry {
-  id: string;
-  name: string;
-  description: string;
-}
-
 export interface CertificationEntry {
   id: string;
   name: string;
   issuer?: string;
-  /** "MM/YYYY", "YYYY", or free text; parsed leniently for autofill. */
   issueDate?: string;
   expirationDate?: string;
 }
 
-export interface ResumeProfile {
-  contact: ContactInfo;
-  summary: string;
-  skills: string[];
-  experience: WorkExperience[];
-  education: EducationEntry[];
-  /** Certification names — kept in sync with certificationDetails[].name for
-   * the PDF/tailoring text list; certificationDetails holds the structured
-   * data the extension autofills into Workday's Certifications section. */
-  certifications: string[];
-  certificationDetails?: CertificationEntry[];
-  projects?: ProjectEntry[];
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  description: string;
+  url?: string;
+  technologies: string[];
 }
 
 export interface JobPosting {
@@ -73,104 +59,6 @@ export interface JobPosting {
   sourceUrl?: string;
 }
 
-export interface TailoredExperience {
-  id: string; // matches WorkExperience.id from the source profile
-  bullets: string[];
-}
-
-export interface TailoredResume {
-  summary: string;
-  skills: string[];
-  experience: TailoredExperience[];
-}
-
-export interface AtsScoreBreakdown {
-  score: number; // 0-100
-  matchedKeywords: string[];
-  missingKeywords: string[];
-  formattingIssues: string[];
-  notes: string;
-}
-
-export interface FitAnalysis {
-  verdict: string;
-  strengths: string[];
-  gaps: string[];
-}
-
-/** Token usage reported by the API for one model call. Shape matches
- * lib/pricing.ts UsageTotals so the client can estimate cost. */
-export interface UsageInfo {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheCreationTokens?: number;
-  cacheReadTokens?: number;
-}
-
-export interface TailorResult {
-  tailoredResume: TailoredResume;
-  coverLetter: string;
-  atsScore: AtsScoreBreakdown;
-  fitAnalysis: FitAnalysis;
-  usage?: UsageInfo;
-}
-
-export interface InterviewQuestion {
-  question: string;
-  category: string; // e.g. "behavioral", "technical", "role-specific", "screening"
-  talkingPoints: string[];
-}
-
-export interface InterviewPrep {
-  generatedAt: string;
-  questions: InterviewQuestion[];
-}
-
-export type ApplicationStatus = "draft" | "applied" | "interviewing" | "rejected" | "offer";
-
-export const APPLICATION_STATUSES: ApplicationStatus[] = [
-  "draft",
-  "applied",
-  "interviewing",
-  "rejected",
-  "offer",
-];
-
-// A saved snapshot of a tailored application, for the /applications tracker.
-// Deliberately does not store the rendered PDFs (could bloat localStorage
-// across many applications) — those are regenerated on demand from this
-// snapshot via /api/resume-pdf and /api/cover-letter-pdf.
-export interface SavedApplication {
-  id: string;
-  status: ApplicationStatus;
-  createdAt: string;
-  updatedAt: string;
-  job: JobPosting;
-  contact: ContactInfo;
-  summary: string;
-  skills: string[];
-  experience: (WorkExperience & { bullets: string[] })[];
-  education: EducationEntry[];
-  certifications: string[];
-  certificationDetails?: CertificationEntry[];
-  projects?: ProjectEntry[];
-  coverLetterText: string;
-  atsScore: AtsScoreBreakdown;
-  fitAnalysis?: FitAnalysis;
-  interviewPrep?: InterviewPrep;
-  notes?: string;
-  statusHistory?: { status: ApplicationStatus; at: string }[];
-  /** ISO date (yyyy-mm-dd) to follow up by; overdue entries get flagged. */
-  followUpAt?: string;
-  /** Archived entries are hidden from the default tracker views but kept
-   * for the record (and still appear in CSV/backup exports). */
-  archived?: boolean;
-  /** Free-text comp info ("$95k base + 10% bonus"); compared across offers. */
-  salary?: string;
-}
-
-// The package handed off to the browser extension for autofilling Workday.
 export interface AutofillPackage {
   version: 1;
   createdAt: string;
@@ -178,7 +66,7 @@ export interface AutofillPackage {
   contact: ContactInfo;
   summary: string;
   skills: string[];
-  experience: (WorkExperience & { bullets: string[] })[];
+  experience: ExperienceEntry[];
   education: EducationEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];
@@ -189,3 +77,100 @@ export interface AutofillPackage {
   coverLetterFileName: string;
   atsScore: number;
 }
+
+export interface ResumeProfile {
+  contact: ContactInfo;
+  summary: string;
+  skills: string[];
+  experience: ExperienceEntry[];
+  education: EducationEntry[];
+  projects: ProjectEntry[];
+  certifications: CertificationEntry[];
+}
+
+export interface TailoredApplication {
+  id: string;
+  createdAt: string;
+  job: JobPosting;
+  profile: ResumeProfile;
+  tailoredSummary: string;
+  tailoredSkills: string[];
+  tailoredBullets: { id: string; original: string; tailored: string }[];
+  coverLetter: string;
+  atsScore: number;
+  atsBreakdown: AtsBreakdown;
+  fitAnalysis?: FitAnalysis;
+  variants?: TailoredVariant[];
+  status: ApplicationStatus;
+  notes?: string;
+  followUpDate?: string;
+  comp?: string;
+  interviewPrep?: InterviewPrep[];
+  outreachMessages?: OutreachMessages;
+}
+
+export interface TailoredVariant {
+  id: string;
+  label: string;
+  tailoredSummary: string;
+  tailoredSkills: string[];
+  tailoredBullets: { id: string; original: string; tailored: string }[];
+  coverLetter: string;
+  atsScore: number;
+}
+
+export interface AtsBreakdown {
+  totalKeywords: number;
+  matchedKeywords: number;
+  matched: string[];
+  missing: string[];
+  score: number;
+  integrityFlags: string[];
+}
+
+export interface FitAnalysis {
+  strengths: string[];
+  gaps: string[];
+  verdict: string;
+}
+
+export type ApplicationStatus =
+  | "draft" | "applied" | "screening" | "interview" | "offer" | "rejected" | "accepted" | "archived";
+
+export interface InterviewPrep {
+  question: string;
+  talkingPoints: string[];
+  honestGapFraming?: string;
+}
+
+export interface OutreachMessages {
+  thankYouEmail?: string;
+  followUpEmail?: string;
+  linkedinDM?: string;
+}
+
+export interface ApplicationStats {
+  total: number;
+  byStatus: Record<ApplicationStatus, number>;
+  averageAts: number;
+  medianDaysToResponse: number;
+  weeklyVolume: number;
+}
+
+export interface BaseProfile {
+  contact: ContactInfo;
+  summary: string;
+  skills: string[];
+  experience: ExperienceEntry[];
+  education: EducationEntry[];
+  projects?: ProjectEntry[];
+  certifications: string[];
+  certificationDetails?: CertificationEntry[];
+  syncedAt?: string;
+}
+
+export const STORAGE_KEYS = {
+  profile: "workdayz.profile",
+  applications: "workdayz.applications",
+  settings: "workdayz.settings",
+} as const;

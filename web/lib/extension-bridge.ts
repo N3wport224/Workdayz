@@ -1,97 +1,98 @@
-"use client";
+/**
+ * Web app side of the window.postMessage protocol with the extension.
+ * See extension/src/content/web-app-bridge.ts for the other half.
+ */
 
-import type { AutofillPackage, JobPosting, ResumeProfile } from "./types";
+import type { AutofillPackage, BaseProfile } from "./types";
 
-// Message protocol shared with extension/src/content/web-app-bridge.ts.
-// The extension's bridge content script only runs on the web app's own
-// origin (see extension/manifest.json host permissions) and relays these
-// messages to the background service worker via chrome.runtime.sendMessage.
-export const EXTENSION_READY_TYPE = "WORKDAYZ_EXTENSION_READY";
-export const AUTOFILL_PACKAGE_TYPE = "WORKDAYZ_AUTOFILL_PACKAGE";
-export const REQUEST_SCRAPED_JOB_TYPE = "WORKDAYZ_REQUEST_SCRAPED_JOB";
-export const SCRAPED_JOB_TYPE = "WORKDAYZ_SCRAPED_JOB";
-export const PACKAGE_STORED_TYPE = "WORKDAYZ_PACKAGE_STORED";
-export const PROFILE_TYPE = "WORKDAYZ_PROFILE";
+const MESSAGE_TYPES = {
+  extensionReady: "WORKDAYZ_EXTENSION_READY",
+  autofillPackage: "WORKDAYZ_AUTOFILL_PACKAGE",
+  requestScrapedJob: "WORKDAYZ_REQUEST_SCRAPED_JOB",
+  scrapedJob: "WORKDAYZ_SCRAPED_JOB",
+  packageStored: "WORKDAYZ_PACKAGE_STORED",
+  profile: "WORKDAYZ_PROFILE",
+  ping: "WORKDAYZ_PING",
+} as const;
 
-/** Syncs the base resume profile to the extension so contact/work-history
- * autofill works even before a job-specific package has been generated.
- * Harmless no-op when the extension isn't installed. */
-export function sendProfileToExtension(profile: ResumeProfile) {
-  window.postMessage(
-    { source: "workdayz-web", type: PROFILE_TYPE, payload: profile },
-    window.location.origin,
-  );
+export type BridgeStatus = "detected" | "not-detected" | "checking";
+
+let _status: BridgeStatus = "checking";
+let _listeners: Array<(status: BridgeStatus) => void> = [];
+
+export function getBridgeStatus(): BridgeStatus {
+  return _status;
 }
 
-/** Fires when the extension confirms it persisted an autofill package. */
-export function onPackageStored(callback: () => void) {
-  const handler = (event: MessageEvent) => {
-    if (event.source !== window) return;
-    if (event.data?.source === "workdayz-extension" && event.data?.type === PACKAGE_STORED_TYPE) {
-      callback();
-    }
+export function onBridgeStatusChange(cb: (status: BridgeStatus) => void): () => void {
+  _listeners.push(cb);
+  return () => {
+    _listeners = _listeners.filter((l) => l !== cb);
   };
-  window.addEventListener("message", handler);
-  return () => window.removeEventListener("message", handler);
 }
 
-export function onScrapedJob(callback: (job: JobPosting) => void) {
-  const handler = (event: MessageEvent) => {
-    if (event.source !== window) return;
-    if (event.data?.source === "workdayz-extension" && event.data?.type === SCRAPED_JOB_TYPE) {
-      callback(event.data.payload as JobPosting);
-    }
-  };
-  window.addEventListener("message", handler);
-  window.postMessage({ source: "workdayz-web", type: REQUEST_SCRAPED_JOB_TYPE }, window.location.origin);
-  return () => window.removeEventListener("message", handler);
+function setStatus(s: BridgeStatus) {
+  _status = s;
+  _listeners.forEach((cb) => cb(s));
 }
 
-export function sendPackageToExtension(pkg: AutofillPackage) {
-  window.postMessage(
-    { source: "workdayz-web", type: AUTOFILL_PACKAGE_TYPE, payload: pkg },
-    window.location.origin,
-  );
-}
+// Listen for extension announcements
+window.addEventListener("message", (event: MessageEvent) => {
+  if (event.source !== window) return;
+  const data = event.data as { source?: string; type?: string; payload?: unknown };
+  if (data?.source !== "workdayz-extension") return;
 
-export function onExtensionDetected(callback: (present: boolean) => void) {
-  const handler = (event: MessageEvent) => {
-    if (event.source !== window) return;
-    if (event.data?.source === "workdayz-extension" && event.data?.type === EXTENSION_READY_TYPE) {
-      callback(true);
-    }
-  };
-  window.addEventListener("message", handler);
-  // Ask the extension to announce itself in case it loaded before we did.
-  window.postMessage({ source: "workdayz-web", type: "WORKDAYZ_PING" }, window.location.origin);
-  return () => window.removeEventListener("message", handler);
-}
-
-async function fileToBase64(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
-export async function fetchPdfAsBase64(
-  url: string,
-  body: unknown,
-): Promise<{ base64: string; fileName: string }> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "PDF generation failed." }));
-    throw new Error(err.error || "PDF generation failed.");
+  switch (data.type) {
+    case MESSAGE_TYPES.extensionReady:
+      setStatus("detected");
+      break;
+    case MESSAGE_TYPES.packageStored:
+      // The extension confirmed it stored the package
+      break;
+    case MESSAGE_TYPES.scrapedJob:
+      // The extension sent a scraped job posting
+      break;
   }
-  const disposition = res.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="(.+)"/);
-  const fileName = match?.[1] ?? "document.pdf";
-  const blob = await res.blob();
-  const base64 = await fileToBase64(blob);
-  return { base64, fileName };
+});
+
+/** Ping the extension to check if it's loaded. */
+export function pingExtension(): void {
+  setStatus("checking");
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.ping },
+    window.location.origin,
+  );
+  // If no response in 500ms, assume not detected
+  setTimeout(() => {
+    if (_status === "checking") setStatus("not-detected");
+  }, 500);
+}
+
+/** Send a tailored package to the extension for autofill. */
+export function sendAutofillPackage(pkg: AutofillPackage): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.autofillPackage, payload: pkg },
+    window.location.origin,
+  );
+}
+
+/** Sync the base profile to the extension. */
+export function sendProfile(profile: BaseProfile): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.profile, payload: profile },
+    window.location.origin,
+  );
+}
+
+/** Request the scraped job from the extension. */
+export function requestScrapedJob(): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.requestScrapedJob },
+    window.location.origin,
+  );
+}
+
+// Auto-ping on load
+if (typeof window !== "undefined") {
+  setTimeout(pingExtension, 300);
 }

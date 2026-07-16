@@ -1,59 +1,64 @@
-import { NextResponse } from "next/server";
-import type { JobPosting, ResumeProfile } from "@/lib/types";
-import { tailorApplication, type TailorOptions } from "@/lib/tailor";
-import { shapeProfile, strArr } from "@/lib/request-shape";
-import { describeAnthropicError } from "@/lib/api-error";
-import { COVER_LETTER_LENGTHS, COVER_LETTER_TONES } from "@/lib/tones";
+import { NextRequest, NextResponse } from "next/server";
+import { tailor } from "@/lib/tailor";
+import { scoreResume } from "@/lib/ats-score";
+import { renderResumeText } from "@/lib/pdf-generator";
+import type { ResumeProfile, JobPosting } from "@/lib/types";
 
-export async function POST(request: Request) {
-  let body: { profile?: ResumeProfile; job?: JobPosting; options?: TailorOptions };
+export async function POST(request: NextRequest) {
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+    const body = await request.json() as {
+      profile: ResumeProfile;
+      job: JobPosting;
+      anthropicKey?: string;
+      model?: string;
+    };
 
-  const { profile, job } = body;
-  if (!profile || !job) {
-    return NextResponse.json(
-      { error: "Both `profile` and `job` are required." },
-      { status: 400 },
-    );
-  }
-  if (!job.description || job.description.trim().length < 50) {
-    return NextResponse.json(
-      { error: "Job description looks too short to tailor against." },
-      { status: 400 },
-    );
-  }
-  if (job.description.length > 60_000) {
-    return NextResponse.json(
-      { error: "Job description is too long (max ~60k characters) — trim it to the relevant sections." },
-      { status: 413 },
-    );
-  }
+    if (!body.profile || !body.job) {
+      return NextResponse.json({ error: "Missing profile or job data" }, { status: 400 });
+    }
 
-  const options: TailorOptions = {};
-  if (body.options?.tone && body.options.tone in COVER_LETTER_TONES) {
-    options.tone = body.options.tone;
-  }
-  if (body.options?.length && body.options.length in COVER_LETTER_LENGTHS) {
-    options.length = body.options.length;
-  }
-  if (typeof body.options?.extraInstructions === "string") {
-    options.extraInstructions = body.options.extraInstructions.slice(0, 2000);
-  }
-  if (Array.isArray(body.options?.emphasisKeywords)) {
-    options.emphasisKeywords = strArr(body.options.emphasisKeywords)
-      .map((k) => k.slice(0, 200))
-      .slice(0, 30);
-  }
+    const apiKey = body.anthropicKey || process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "No Anthropic API key configured. Set ANTHROPIC_API_KEY in your .env.local or provide one in the request." },
+        { status: 400 },
+      );
+    }
 
-  try {
-    const result = await tailorApplication(shapeProfile(profile), job, options);
-    return NextResponse.json(result);
-  } catch (err) {
-    const { message, status } = describeAnthropicError(err, "Tailoring failed.");
-    return NextResponse.json({ error: message }, { status });
+    const result = await tailor(body.profile, body.job, apiKey, body.model);
+
+    // Score the tailored result
+    const atsBreakdown = scoreResume(
+      body.job.description,
+      body.job.title,
+      result.summary,
+      result.skills,
+      result.bullets.map((b) => b.tailored),
+      body.profile,
+    );
+
+    // Score variants
+    const scoredVariants = result.variants.map((v) => ({
+      ...v,
+      atsScore: scoreResume(
+        body.job.description,
+        body.job.title,
+        v.tailoredSummary,
+        v.tailoredSkills,
+        v.tailoredBullets.map((b) => b.tailored),
+        body.profile,
+      ).score,
+    }));
+
+    return NextResponse.json({
+      ...result,
+      variants: scoredVariants,
+      atsBreakdown,
+      atsScore: atsBreakdown.score,
+      estimatedCost: result.estimatedCost,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

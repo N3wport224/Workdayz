@@ -8,6 +8,10 @@ const POSITION_KEY = "workdayz.widgetPosition"; // "right" (default) | "left"
 export interface Widget {
   root: HTMLElement;
   setStatus(text: string): void;
+  showProgress(step: string, current: number, total: number): void;
+  showResult(summary: import("../types").AutofillRunSummary): void;
+  showExtendedInfo(html: string): void;
+  reset(): void;
 }
 
 export function mountWidget(title: string): Widget {
@@ -49,6 +53,15 @@ export function mountWidget(title: string): Widget {
       }
       .collapseBtn:hover { color: #f9fafb; }
       .status { font-size: 12px; opacity: 0.85; margin-bottom: 8px; line-height: 1.4; }
+      .progress-container { margin-bottom: 8px; }
+      .progress-bar {
+        width: 100%; height: 4px; background: #374151; border-radius: 2px; overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%; background: #2563eb; border-radius: 2px; transition: width 0.3s ease;
+        width: 0%;
+      }
+      .progress-label { font-size: 10px; color: #9ca3af; margin-top: 3px; }
       button.action {
         font-family: inherit;
         font-size: 12px;
@@ -64,6 +77,14 @@ export function mountWidget(title: string): Widget {
       }
       button.action:hover { background: #1d4ed8; }
       button.action:disabled { opacity: 0.5; cursor: default; }
+      .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+      .result-item { background: #1f2937; border-radius: 6px; padding: 6px 8px; text-align: center; }
+      .result-item .num { font-size: 16px; font-weight: 700; line-height: 1.2; }
+      .result-item .num.green { color: #34d399; }
+      .result-item .num.amber { color: #fbbf24; }
+      .result-item .num.red { color: #f87171; }
+      .result-item .desc { font-size: 9px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.03em; }
+      .result-detail { font-size: 10px; color: #9ca3af; line-height: 1.4; }
       .bubble {
         width: 40px; height: 40px; border-radius: 50%;
         background: #2563eb; color: white; border: none; cursor: pointer;
@@ -84,15 +105,22 @@ export function mountWidget(title: string): Widget {
         </div>
       </div>
       <div class="status" id="status">Loading...</div>
+      <div class="progress-container hidden" id="progressContainer">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">Starting...</div>
+      </div>
+      <div id="resultArea"></div>
       <div id="actions"></div>
     </div>
     <button class="bubble" id="bubble" title="Open Workdayz">W</button>
   `;
 
-  // textContent, not template interpolation — keeps this safe even if a
-  // future caller ever passes non-constant text.
   shadow.getElementById("title")!.textContent = title;
   const statusEl = shadow.getElementById("status")!;
+  const progressContainer = shadow.getElementById("progressContainer")!;
+  const progressFill = shadow.getElementById("progressFill")! as HTMLElement;
+  const progressLabel = shadow.getElementById("progressLabel")!;
+  const resultArea = shadow.getElementById("resultArea")!;
   const panel = shadow.getElementById("panel")!;
   const bubble = shadow.getElementById("bubble")!;
 
@@ -132,11 +160,64 @@ export function mountWidget(title: string): Widget {
     /* orphaned script */
   }
 
+  function showProgress(step: string, current: number, total: number) {
+    progressContainer.classList.remove("hidden");
+    const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+    progressFill.style.width = `${pct}%`;
+    progressLabel.textContent = `${step} (${current}/${total})`;
+    statusEl.textContent = `⏳ ${step}...`;
+  }
+
+  function showResult(summary: import("../types").AutofillRunSummary) {
+    progressContainer.classList.add("hidden");
+    const total = summary.filled.length;
+    const stillRequired = summary.stillRequired?.length ?? 0;
+    const skipped = summary.skipped.length;
+    const leftForYou = summary.leftForYou?.length ?? 0;
+
+    let html = `<div class="result-grid">`;
+    html += `<div class="result-item"><div class="num green">${total}</div><div class="desc">Filled</div></div>`;
+    html += `<div class="result-item"><div class="num ${stillRequired > 0 ? 'red' : 'green'}">${stillRequired}</div><div class="desc">Still Needs You</div></div>`;
+    if (skipped > 0 || leftForYou > 0) {
+      html += `<div class="result-item"><div class="num amber">${skipped}</div><div class="desc">Skipped</div></div>`;
+      html += `<div class="result-item"><div class="num amber">${leftForYou}</div><div class="desc">Left For You</div></div>`;
+    }
+    html += `</div>`;
+
+    if (summary.stillRequired?.length) {
+      html += `<div class="result-detail" style="color: #f87171;"><strong>Still need:</strong> `;
+      html += summary.stillRequired.slice(0, 4).map(s => s.slice(0, 40)).join(", ");
+      html += `</div>`;
+    }
+    if (summary.leftForYou?.length) {
+      html += `<div class="result-detail"><strong>Your input:</strong> `;
+      html += summary.leftForYou.slice(0, 2).join(", ");
+      if (summary.leftForYou.length > 2) html += ` +${summary.leftForYou.length - 2} more`;
+      html += `</div>`;
+    }
+    resultArea.innerHTML = html;
+  }
+
+  function showExtendedInfo(html: string) {
+    progressContainer.classList.add("hidden");
+    resultArea.innerHTML = html;
+  }
+
+  function reset() {
+    progressContainer.classList.add("hidden");
+    resultArea.innerHTML = "";
+    statusEl.textContent = "Ready";
+  }
+
   return {
     root: shadow.getElementById("actions") as unknown as HTMLElement,
     setStatus(text: string) {
       statusEl.textContent = text;
     },
+    showProgress,
+    showResult,
+    showExtendedInfo,
+    reset,
   };
 }
 

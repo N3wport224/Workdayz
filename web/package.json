@@ -30,5 +30,15 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.10"
-  }
+  },
+  "description": "Next.js app that tailors your resume and cover letter to a job posting using\r Claude, scores the result for ATS keyword coverage, renders ATS-safe PDFs,\r and hands the finished package off to the [browser extension](../extension)\r for Workday autofill.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }

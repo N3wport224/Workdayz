@@ -2,14 +2,15 @@ import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseP
 
 const webAppUrlInput = document.getElementById("webAppUrl") as HTMLInputElement;
 const connectBtn = document.getElementById("connectBtn") as HTMLButtonElement;
-const connectStatus = document.getElementById("connectStatus") as HTMLDivElement;
+const connectFeedback = document.getElementById("connectFeedback") as HTMLDivElement;
 const openAppBtn = document.getElementById("openAppBtn") as HTMLButtonElement;
-const statusEl = document.getElementById("status") as HTMLDivElement;
 const autofillBtn = document.getElementById("autofillBtn") as HTMLButtonElement;
-const autofillStatus = document.getElementById("autofillStatus") as HTMLDivElement;
+const autofillFeedback = document.getElementById("autofillFeedback") as HTMLDivElement;
+const autofillDetails = document.getElementById("autofillDetails") as HTMLDivElement;
 const clearBtn = document.getElementById("clearBtn") as HTMLButtonElement;
-const clearStatus = document.getElementById("clearStatus") as HTMLDivElement;
-const profileStatusEl = document.getElementById("profileStatus") as HTMLDivElement;
+const packageStatus = document.getElementById("packageStatus") as HTMLDivElement;
+const packageSummary = document.getElementById("packageSummary") as HTMLDivElement;
+const profileStatus = document.getElementById("profileStatus") as HTMLDivElement;
 const hearAboutUsInput = document.getElementById("hearAboutUs") as HTMLInputElement;
 const customRulesInput = document.getElementById("customRules") as HTMLTextAreaElement;
 const tenantRulesLabel = document.getElementById("tenantRulesLabel") as HTMLLabelElement;
@@ -18,9 +19,16 @@ const saveRulesBtn = document.getElementById("saveRulesBtn") as HTMLButtonElemen
 const exportRulesBtn = document.getElementById("exportRulesBtn") as HTMLButtonElement;
 const importRulesBtn = document.getElementById("importRulesBtn") as HTMLButtonElement;
 const importArea = document.getElementById("importArea") as HTMLTextAreaElement;
-const rulesStatus = document.getElementById("rulesStatus") as HTMLDivElement;
+const rulesFeedback = document.getElementById("rulesFeedback") as HTMLDivElement;
+const connectionLabel = document.getElementById("connectionLabel") as HTMLSpanElement;
+const connectionDetail = document.getElementById("connectionDetail") as HTMLDivElement;
 
 let activeTenantHost: string | null = null;
+
+function showFeedback(el: HTMLDivElement, text: string, kind: "success" | "warning" | "error" | "info") {
+  el.textContent = text;
+  el.className = `feedback ${kind}`;
+}
 
 function parseRuleLines(text: string): CustomFillRule[] {
   return text
@@ -38,6 +46,22 @@ function rulesToLines(rules: CustomFillRule[]): string {
   return rules.map((r) => `${r.label} = ${r.value}`).join("\n");
 }
 
+function buildStatusRow(icon: string, iconClass: string, label: string, detail: string): string {
+  return `<div class="status-row">
+    <div class="icon ${iconClass}">${icon}</div>
+    <div class="status-text">
+      <span class="label">${escapeHtml(label)}</span>
+      <div class="detail">${escapeHtml(detail)}</div>
+    </div>
+  </div>`;
+}
+
+function escapeHtml(s: string): string {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 async function init() {
   const stored = await chrome.storage.local.get([
     STORAGE_KEYS.webAppOrigin,
@@ -45,30 +69,62 @@ async function init() {
     STORAGE_KEYS.baseProfile,
     STORAGE_KEYS.customRules,
     STORAGE_KEYS.hearAboutUs,
+    STORAGE_KEYS.fillHistory,
   ]);
   const origin = (stored[STORAGE_KEYS.webAppOrigin] as string | undefined) ?? "http://localhost:3000";
   webAppUrlInput.value = origin;
 
-  const pkg = stored[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined;
-  statusEl.textContent = pkg
-    ? `Ready: "${pkg.job.title}" at ${pkg.job.company} (ATS ${pkg.atsScore}/100), generated ${new Date(pkg.createdAt).toLocaleString()}.`
-    : "No tailored application yet — generate one in the web app.";
+  // Connection status
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const isWorkday = tab?.url ? /\.myworkdayjobs\.com/i.test(new URL(tab.url).hostname) : false;
+  if (isWorkday) {
+    connectionLabel.textContent = `📍 On ${new URL(tab!.url!).hostname}`;
+    connectionDetail.textContent = "Workday application page detected — ready to autofill.";
+  } else {
+    connectionLabel.textContent = "🌐 Not on a Workday site";
+    connectionDetail.textContent = "Navigate to a job application at *.myworkdayjobs.com to autofill.";
+  }
 
+  // Package status
+  const pkg = stored[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined;
+  if (pkg) {
+    const pkgLabel = `${escapeHtml(pkg.job.title)} at ${escapeHtml(pkg.job.company)}`;
+    const pkgDetail = `ATS ${pkg.atsScore}/100 · generated ${new Date(pkg.createdAt).toLocaleString()}`;
+    packageStatus.innerHTML = buildStatusRow("✓", "ready", pkgLabel, pkgDetail);
+
+    // Summary grid
+    const certCount = pkg.certificationDetails?.filter(c => c.name?.trim()).length ?? 0;
+    packageSummary.innerHTML = `
+      <div class="summary-item"><div class="num green">${pkg.experience.length}</div><div class="desc">Roles</div></div>
+      <div class="summary-item"><div class="num green">${pkg.education.length}</div><div class="desc">Education</div></div>
+      <div class="summary-item"><div class="num ${certCount > 0 ? 'green' : 'amber'}">${certCount}</div><div class="desc">Certs</div></div>
+      <div class="summary-item"><div class="num ${pkg.atsScore >= 80 ? 'green' : pkg.atsScore >= 60 ? 'amber' : 'red'}">${pkg.atsScore}</div><div class="desc">ATS Score</div></div>
+    `;
+    packageSummary.classList.remove("hidden");
+  } else {
+    packageStatus.innerHTML = buildStatusRow("!", "empty", "No package loaded", "Generate a tailored application in the web app first.");
+    packageSummary.classList.add("hidden");
+  }
+
+  // Profile status
   const profile = stored[STORAGE_KEYS.baseProfile] as BaseProfile | undefined;
-  profileStatusEl.textContent = profile
-    ? `Base profile: ${profile.contact.firstName} ${profile.contact.lastName} (${profile.experience.length} role(s))${
-        profile.syncedAt ? `, synced ${new Date(profile.syncedAt).toLocaleString()}` : ""
-      }.`
-    : "No base profile synced — save your resume on the web app's Resume page with this extension connected.";
+  if (profile) {
+    const syncedAt = profile.syncedAt ? ` · synced ${new Date(profile.syncedAt).toLocaleString()}` : "";
+    profileStatus.innerHTML = buildStatusRow(
+      "✓", "ready",
+      `${escapeHtml(profile.contact.firstName)} ${escapeHtml(profile.contact.lastName)}`,
+      `${profile.experience.length} role(s) · ${profile.education.length} education · ${profile.certificationDetails?.length ?? 0} cert(s)${syncedAt}`
+    );
+  } else {
+    profileStatus.innerHTML = buildStatusRow("!", "empty", "No profile synced", "Save your resume on the web app's Resume page with this extension connected.");
+  }
 
   hearAboutUsInput.value = (stored[STORAGE_KEYS.hearAboutUs] as string | undefined) ?? "";
   const rules = (stored[STORAGE_KEYS.customRules] as CustomFillRule[] | undefined) ?? [];
   customRulesInput.value = rulesToLines(rules);
 
-  // Per-tenant rules for the active tab's Workday host (URL is visible to us
-  // because the extension has host permission for *.myworkdayjobs.com).
+  // Per-tenant rules for the active tab's Workday host
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const host = tab?.url ? new URL(tab.url).hostname : "";
     if (/\.myworkdayjobs\.com$/i.test(host)) {
       activeTenantHost = host;
@@ -92,19 +148,19 @@ connectBtn.addEventListener("click", async () => {
   try {
     origin = new URL(url).origin;
   } catch {
-    connectStatus.textContent = "Enter a valid URL, e.g. http://localhost:3000";
+    showFeedback(connectFeedback, "Enter a valid URL, e.g. http://localhost:3000", "error");
     return;
   }
 
   const pattern = `${origin}/*`;
   const granted = await chrome.permissions.request({ origins: [pattern] });
   if (!granted) {
-    connectStatus.textContent = "Permission denied — the extension can't reach that page.";
+    showFeedback(connectFeedback, "Permission denied — the extension can't reach that page.", "error");
     return;
   }
 
   await chrome.runtime.sendMessage({ type: "REGISTER_WEB_APP_ORIGIN", origin });
-  connectStatus.textContent = `Connected to ${origin}. Reload the web app tab.`;
+  showFeedback(connectFeedback, `Connected to ${origin}. Reload the web app tab.`, "success");
 });
 
 openAppBtn.addEventListener("click", async () => {
@@ -112,25 +168,96 @@ openAppBtn.addEventListener("click", async () => {
 });
 
 autofillBtn.addEventListener("click", async () => {
-  autofillStatus.textContent = "Running...";
+  autofillBtn.disabled = true;
+  autofillBtn.textContent = "⏳ Running autofill...";
+  showFeedback(autofillFeedback, "Filling fields...", "info");
+  autofillFeedback.classList.remove("hidden");
+  autofillDetails.innerHTML = "";
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
-    autofillStatus.textContent = "No active tab.";
+    showFeedback(autofillFeedback, "No active tab.", "error");
+    autofillBtn.disabled = false;
+    autofillBtn.textContent = "▶ Autofill this page";
     return;
   }
   try {
     const result = (await chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOFILL" })) as AutofillRunSummary;
     if (!result || (!result.filled.length && !result.filesAttached.length)) {
-      autofillStatus.textContent = "Nothing filled — make sure you're on a Workday application page with a tailored package ready.";
+      showFeedback(autofillFeedback, "Nothing to fill — open a Workday application page with a tailored package ready.", "warning");
     } else {
-      const stillRequired = result.stillRequired?.length
-        ? ` ${result.stillRequired.length} required field(s) still need you.`
-        : "";
-      autofillStatus.textContent = `Filled ${result.filled.length} field(s)${result.filesAttached.length ? `, attached ${result.filesAttached.join(" & ")}` : ""}.${stillRequired} Review before continuing.`;
+      const total = result.filled.length;
+      const files = result.filesAttached.length;
+      const leftForYou = result.leftForYou?.length ?? 0;
+      const stillRequired = result.stillRequired?.length ?? 0;
+      const skipped = result.skipped.length;
+
+      showFeedback(
+        autofillFeedback,
+        `✅ Filled ${total} field(s)${files ? ` and attached ${result.filesAttached.join(" & ")}` : ""}.${stillRequired ? ` ${stillRequired} required field(s) still need you.` : ""} Review before continuing.`,
+        stillRequired > 0 ? "warning" : "success"
+      );
+
+      // Structured detail
+      let detailsHtml = `<div class="summary-grid">`;
+      detailsHtml += `<div class="summary-item"><div class="num green">${total}</div><div class="desc">Filled</div></div>`;
+      detailsHtml += `<div class="summary-item"><div class="num ${stillRequired > 0 ? 'red' : 'green'}">${stillRequired}</div><div class="desc">Still Required</div></div>`;
+      if (leftForYou > 0) detailsHtml += `<div class="summary-item"><div class="num amber">${leftForYou}</div><div class="desc">Left For You</div></div>`;
+      if (skipped > 0) detailsHtml += `<div class="summary-item"><div class="num amber">${skipped}</div><div class="desc">Skipped</div></div>`;
+      detailsHtml += `</div>`;
+
+      // Left-for-you details
+      if (result.leftForYou?.length) {
+        detailsHtml += `<div style="margin-top: 6px; font-size: 11px; color: var(--text-secondary);">`;
+        detailsHtml += `<strong>Self-ID questions left for you:</strong>`;
+        detailsHtml += `<ul class="detail-list">`;
+        for (const item of result.leftForYou) {
+          detailsHtml += `<li>${escapeHtml(item)}</li>`;
+        }
+        detailsHtml += `</ul></div>`;
+      }
+
+      // Still-required details
+      if (result.stillRequired?.length) {
+        detailsHtml += `<div style="margin-top: 6px; font-size: 11px; color: var(--danger);">`;
+        detailsHtml += `<strong>Required fields still empty:</strong>`;
+        detailsHtml += `<ul class="detail-list">`;
+        for (const item of result.stillRequired) {
+          detailsHtml += `<li>${escapeHtml(item.slice(0, 50))}</li>`;
+        }
+        detailsHtml += `</ul></div>`;
+      }
+
+      // Skipped details
+      if (result.skipped.length) {
+        detailsHtml += `<div style="margin-top: 6px; font-size: 11px; color: var(--warning);">`;
+        detailsHtml += `<strong>Skipped:</strong>`;
+        detailsHtml += `<ul class="detail-list">`;
+        for (const item of result.skipped) {
+          detailsHtml += `<li>${escapeHtml(item.slice(0, 80))}</li>`;
+        }
+        detailsHtml += `</ul></div>`;
+      }
+
+      // Mismatches
+      if (result.mismatches?.length) {
+        detailsHtml += `<div style="margin-top: 6px; font-size: 11px; color: var(--warning);">`;
+        detailsHtml += `<strong>Mismatches (form differs from profile):</strong>`;
+        detailsHtml += `<ul class="detail-list">`;
+        for (const item of result.mismatches) {
+          detailsHtml += `<li>${escapeHtml(item.slice(0, 80))}</li>`;
+        }
+        detailsHtml += `</ul></div>`;
+      }
+
+      autofillDetails.innerHTML = detailsHtml;
+      autofillDetails.classList.add("open");
     }
   } catch {
-    autofillStatus.textContent = "Couldn't reach this tab — open a Workday application page first.";
+    showFeedback(autofillFeedback, "Couldn't reach the page. Open a Workday application form tab first.", "error");
   }
+  autofillBtn.disabled = false;
+  autofillBtn.textContent = "▶ Autofill this page";
 });
 
 saveRulesBtn.addEventListener("click", async () => {
@@ -151,9 +278,13 @@ saveRulesBtn.addEventListener("click", async () => {
     tenantNote = ` + ${tenantRules.length} for ${activeTenantHost}`;
   }
   await chrome.storage.local.set(updates);
-  rulesStatus.textContent = `Saved ${rules.length} custom answer(s)${tenantNote}${
-    hearAboutUsInput.value.trim() ? ` + the "How did you hear about us?" default` : ""
-  }.`;
+  showFeedback(
+    rulesFeedback,
+    `Saved ${rules.length} custom answer(s)${tenantNote}${
+      hearAboutUsInput.value.trim() ? ` + the "How did you hear about us?" default` : ""
+    }.`,
+    "success"
+  );
 });
 
 exportRulesBtn.addEventListener("click", async () => {
@@ -174,18 +305,16 @@ exportRulesBtn.addEventListener("click", async () => {
   );
   try {
     await navigator.clipboard.writeText(payload);
-    rulesStatus.textContent = "Rules JSON copied to the clipboard — save it or share it.";
+    showFeedback(rulesFeedback, "Rules JSON copied to clipboard — save or share it.", "success");
   } catch {
-    rulesStatus.textContent = "Couldn't access the clipboard.";
+    showFeedback(rulesFeedback, "Couldn't access the clipboard.", "error");
   }
 });
 
 importRulesBtn.addEventListener("click", async () => {
-  // Two-step, permission-free import: first click reveals a paste box,
-  // second click (with content) applies it.
   if (importArea.style.display === "none") {
     importArea.style.display = "";
-    rulesStatus.textContent = 'Paste the exported rules JSON below, then click "Import rules" again.';
+    showFeedback(rulesFeedback, 'Paste the exported rules JSON below, then click "Import" again.', "info");
     importArea.focus();
     return;
   }
@@ -204,17 +333,34 @@ importRulesBtn.addEventListener("click", async () => {
     });
     importArea.style.display = "none";
     importArea.value = "";
-    rulesStatus.textContent = "Rules imported.";
+    showFeedback(rulesFeedback, "Rules imported successfully.", "success");
     init();
   } catch {
-    rulesStatus.textContent = "That isn't a Workdayz rules export — click Export rules on the source browser first.";
+    showFeedback(rulesFeedback, "That isn't a valid Workdayz rules export.", "error");
   }
 });
 
 clearBtn.addEventListener("click", async () => {
   await chrome.storage.local.remove([STORAGE_KEYS.autofillPackage, STORAGE_KEYS.scrapedJob]);
-  clearStatus.textContent = "Cleared. Your resume and job data are no longer stored in the extension.";
-  statusEl.textContent = "No tailored application yet — generate one in the web app.";
+  showFeedback(autofillFeedback, "Cleared. Your application data is no longer stored in the extension.", "info");
+  autofillFeedback.classList.remove("hidden");
+  packageStatus.innerHTML = buildStatusRow("!", "empty", "No package loaded", "Generate a tailored application in the web app first.");
+  packageSummary.classList.add("hidden");
 });
+
+// Collapsible sections
+function setupCollapsible(toggleId: string, contentId: string) {
+  const toggle = document.getElementById(toggleId);
+  const content = document.getElementById(contentId);
+  if (toggle && content) {
+    toggle.addEventListener("click", () => {
+      const isOpen = content.classList.toggle("open");
+      toggle.textContent = isOpen ? `▼ ${toggle.textContent!.slice(1).trim()}` : `▶ ${toggle.textContent!.slice(1).trim()}`;
+    });
+  }
+}
+
+setupCollapsible("rulesToggle", "rulesContent");
+setupCollapsible("connectToggle", "connectContent");
 
 init();

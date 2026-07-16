@@ -52,10 +52,10 @@ const COMPANY_SYNONYMS = ["employer", "company name", "company"];
 const SCHOOL_SYNONYMS = ["school name", "school", "institution", "university"];
 const DEGREE_SYNONYMS = ["degree"];
 const CURRENT_ROLE_SYNONYMS = ["current", "i currently work here", "present"];
-const CERT_NAME_SYNONYMS = ["certification", "certificate", "license", "credential"];
-const ISSUER_SYNONYMS = ["issuing organization", "issued by", "issuer", "issuing body"];
-const ISSUED_DATE_TERMS = ["issued date", "issue date", "issued", "date acquired", "date obtained"];
-const EXPIRATION_DATE_TERMS = ["expiration date", "expiry date", "expires", "expiration", "valid until"];
+const CERT_NAME_SYNONYMS = ["certification", "certificate", "license", "credential", "accreditation"];
+const ISSUER_SYNONYMS = ["issuing organization", "issued by", "issuer", "issuing body", "certifying body"];
+const ISSUED_DATE_TERMS = ["issued date", "issue date", "issued", "date acquired", "date obtained", "certification date", "credential date"];
+const EXPIRATION_DATE_TERMS = ["expiration date", "expiry date", "expires", "expiration", "valid until", "renewal date"];
 
 function isPresentDate(value: string): boolean {
   return /present|current/i.test(value);
@@ -126,6 +126,16 @@ function findDateContainer(panel: HTMLElement, groupSynonyms: string[]): HTMLEle
     if (container && container.querySelector("input")) return container;
     if (lbl.parentElement?.querySelector("input")) return lbl.parentElement as HTMLElement;
   }
+  // Some tenants put the label on a sibling or parent div, not a <label> element.
+  // Look for elements with data-automation-id whose text matches and contains date inputs.
+  // Narrow scope: only match elements that have a data-automation-id attribute to avoid
+  // matching arbitrary divs that happen to contain the word "from" or "to".
+  for (const el of Array.from(panel.querySelectorAll<HTMLElement>("[data-automation-id], span, fieldset"))) {
+    const t = normalizeLower((el.textContent ?? "").replace(/\*/g, " "));
+    if (!t) continue;
+    if (!groupSynonyms.some((g) => t === g || t.startsWith(`${g} `))) continue;
+    if (el.querySelector("input")) return el;
+  }
   return null;
 }
 
@@ -147,12 +157,26 @@ function fillDateInContainer(container: HTMLElement, value: string): boolean {
     return true;
   }
   const attrs = (el: HTMLInputElement) =>
-    `${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("data-automation-id") ?? ""} ${el.getAttribute("placeholder") ?? ""}`;
+    `${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("data-automation-id") ?? ""} ${el.getAttribute("placeholder") ?? ""} ${el.getAttribute("name") ?? ""} ${el.className ?? ""}`;
   const yearEl = inputs.find((el) => /year|yyyy/i.test(attrs(el)));
   const monthEl = inputs.find((el) => el !== yearEl && /month|\bmm\b/i.test(attrs(el)));
   if (yearEl) {
     setFieldValue(yearEl, parsed.year);
     if (monthEl && parsed.month) setFieldValue(monthEl, parsed.month);
+    return true;
+  }
+  // Some tenants use day/month/year triple inputs — fill month and year, skip day
+  const dayEl = inputs.find((el) => /day|dd\b/i.test(attrs(el)));
+  if (dayEl && monthEl && yearEl) {
+    setFieldValue(dayEl, "15");
+    setFieldValue(monthEl, parsed.month ?? "01");
+    setFieldValue(yearEl, parsed.year);
+    return true;
+  }
+  // Fallback: try to identify by position (first = month, second = year)
+  if (inputs.length === 2) {
+    setFieldValue(inputs[0], parsed.month ?? "01");
+    setFieldValue(inputs[1], parsed.year);
     return true;
   }
   return false;
@@ -226,19 +250,32 @@ function normalizeLower(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+let addButtonCache: { buttons: HTMLElement[]; timestamp: number } | null = null;
+const ADD_BUTTON_CACHE_TTL = 2000; // 2 seconds
+
 /** Finds a section's Add / "Add Another" button. Conservative: text must
  * start with "add" and never look like navigation/submission or a
  * Delete/Remove control. A bare "Add" (no section words in its own text) is
  * matched by the section heading above it, so three identical "Add" buttons
- * are told apart. Falls back to a single unambiguous Add button. */
+ * are told apart. Falls back to a single unambiguous Add button.
+ * Caches the button query for 2s to avoid re-scanning all buttons on every
+ * call during section growth (the button element stays the same). */
 function findAddButton(sectionTerms: string[]): HTMLElement | null {
-  const adds: HTMLElement[] = [];
-  for (const el of Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))) {
-    if (!isVisible(el)) continue;
-    const text = normalizeLower(el.textContent ?? "");
-    if (!/^add\b/.test(text)) continue;
-    if (/\b(submit|continue|next|save|apply|delete|remove|cancel)\b/.test(text)) continue;
-    adds.push(el);
+  // Use cached result if fresh enough
+  const now = Date.now();
+  let adds: HTMLElement[];
+  if (addButtonCache && (now - addButtonCache.timestamp) < ADD_BUTTON_CACHE_TTL) {
+    adds = addButtonCache.buttons;
+  } else {
+    adds = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))) {
+      if (!isVisible(el)) continue;
+      const text = normalizeLower(el.textContent ?? "");
+      if (!/^add\b/.test(text)) continue;
+      if (/\b(submit|continue|next|save|apply|delete|remove|cancel)\b/.test(text)) continue;
+      adds.push(el);
+    }
+    addButtonCache = { buttons: adds, timestamp: now };
   }
   // 1) The button names its own section ("Add Another Work Experience").
   for (const el of adds) {

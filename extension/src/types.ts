@@ -106,6 +106,14 @@ export const STORAGE_KEYS = {
   /** Record<pageKey, { at: string; filled: number }> — which application
    * pages have already been autofilled (capped, most recent kept). */
   fillHistory: "workdayz.fillHistory",
+  /** Active autofill session tracking */
+  activeSession: "workdayz.activeSession",
+  /** Local usage analytics */
+  usageStats: "workdayz.usageStats",
+  /** Saved fill templates */
+  fillTemplates: "workdayz.fillTemplates",
+  /** User extension settings */
+  settings: "workdayz.settings",
 } as const;
 
 // window.postMessage protocol with the web app (see web/lib/extension-bridge.ts)
