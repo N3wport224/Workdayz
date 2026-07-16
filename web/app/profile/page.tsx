@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { loadProfile, saveProfile, createDemoProfile } from "@/lib/storage";
 import { sendProfile } from "@/lib/extension-bridge";
 import { getBridgeStatus } from "@/lib/extension-bridge";
+import { ResumeImportPanel } from "@/components/ResumeImportPanel";
 import type { ResumeProfile } from "@/lib/types";
 
 const emptyProfile: ResumeProfile = {
@@ -20,8 +21,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ResumeProfile>(emptyProfile);
   const [saved, setSaved] = useState(false);
   const [skillInput, setSkillInput] = useState("");
-  const [resumeText, setResumeText] = useState("");
-  const [importing, setImporting] = useState(false);
+  const [importNotice, setImportNotice] = useState("");
 
   useEffect(() => {
     const p = loadProfile();
@@ -96,6 +96,7 @@ export default function ProfilePage() {
       });
     }
     setSaved(true);
+    setImportNotice("");
     setTimeout(() => setSaved(false), 2000);
   };
 
@@ -103,25 +104,15 @@ export default function ProfilePage() {
     setProfile(createDemoProfile());
   };
 
-  const importResume = () => {
-    if (!resumeText.trim()) return;
-    setImporting(true);
-    // Parse the pasted resume text to extract skills, experience, etc.
-    const lines = resumeText.split("\n").map((l) => l.trim()).filter(Boolean);
-    const skills = lines.filter((l) => l.includes(",") || profile.skills.some((s) => l.toLowerCase().includes(s.toLowerCase())));
-    const newProfile = { ...profile };
-    if (skills.length > 0) {
-      newProfile.skills = [...new Set([...newProfile.skills, ...skills.flatMap((s) => s.split(",").map((x) => x.trim()))])].filter(Boolean);
-    }
-    // Try to extract email from text
-    const emailMatch = resumeText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch && !newProfile.contact.email) newProfile.contact.email = emailMatch[0];
-    // Try to extract phone
-    const phoneMatch = resumeText.match(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-    if (phoneMatch && !newProfile.contact.phone) newProfile.contact.phone = phoneMatch[0];
-    setProfile(newProfile);
-    setImporting(false);
-    setResumeText("");
+  /** Claude parsed the uploaded/pasted resume into a full profile — load it
+   * into the form for review. Nothing is saved (or synced to the extension)
+   * until the user clicks Save, so they always review first. */
+  const handleImported = (imported: ResumeProfile) => {
+    setProfile(imported);
+    setImportNotice(
+      `Imported ${imported.experience.length} role(s), ${imported.education.length} education, ${imported.certifications.length} certification(s), ${imported.skills.length} skill(s). Review below, fix anything that's off, then click "Save profile" — saving also syncs it to the extension.`,
+    );
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -134,19 +125,29 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Resume import */}
+      {/* The whole journey at a glance */}
+      <div className="card bg-gray-900/60 text-sm text-gray-400">
+        <span className="text-gray-200 font-medium">How it works:</span>{" "}
+        1. Import your resume below → 2. Review &amp; <span className="text-gray-200">Save</span> (this syncs your base resume to the extension) →
+        3. Tailor it per job on the <a href="/apply" className="text-blue-400 underline">Apply page</a> →
+        4. Pick which resume to autofill with — the tailored one by default — from the dropdown on the Apply page or in the extension popup.
+      </div>
+
+      {/* Step 1: import an existing resume (PDF or pasted text → Claude
+          structures it). This is the profile that feeds every autofill. */}
       <div className="card">
-        <h2 className="font-semibold mb-3">Import from resume</h2>
-        <p className="text-sm text-gray-400 mb-3">Paste your existing resume as text to auto-extract key information.</p>
-        <textarea
-          value={resumeText}
-          onChange={(e) => setResumeText(e.target.value)}
-          placeholder="Paste your resume text here..."
-          rows={5}
-        />
-        <button onClick={importResume} disabled={!resumeText.trim() || importing} className="btn btn-secondary mt-3">
-          {importing ? "Importing..." : "Import from text"}
-        </button>
+        <h2 className="font-semibold mb-1">Step 1 · Import your resume</h2>
+        <p className="text-sm text-gray-400 mb-3">
+          Upload your resume PDF (or paste its text) and Claude fills in every section below —
+          contact, experience with dates, education, certifications, and skills. Then review,
+          save, and this becomes the base resume the extension autofills from.
+        </p>
+        <ResumeImportPanel onImported={handleImported} />
+        {importNotice && (
+          <div className="p-3 bg-green-950/30 border border-green-500/30 rounded-lg text-sm text-green-400">
+            ✅ {importNotice}
+          </div>
+        )}
       </div>
 
       {/* Contact info */}
