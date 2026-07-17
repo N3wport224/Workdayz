@@ -377,6 +377,7 @@ export default function ProfilePage() {
             <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-600">—</div>
           )}
           <input
+            aria-label="Upload profile photo"
             type="file"
             accept="image/*"
             className="text-sm w-auto"
@@ -430,6 +431,7 @@ export default function ProfilePage() {
               <div key={field}>
                 <label className="text-xs text-gray-500">{label}</label>
                 <input
+                  aria-label={label}
                   value={ref[field] ?? ""}
                   onChange={(e) =>
                     setProfile((p) => ({
@@ -492,19 +494,19 @@ export default function ProfilePage() {
           </div>
           <div>
             <label>Country</label>
-            <input value={profile.contact.country} onChange={(e) => updateContact("country", e.target.value)} />
+            <input aria-label="Country" value={profile.contact.country} onChange={(e) => updateContact("country", e.target.value)} />
           </div>
           <div className="col-span-2">
             <label>Address</label>
-            <input value={profile.contact.address} onChange={(e) => updateContact("address", e.target.value)} />
+            <input aria-label="Street address" value={profile.contact.address} onChange={(e) => updateContact("address", e.target.value)} />
           </div>
           <div>
             <label>LinkedIn</label>
-            <input value={profile.contact.linkedin} onChange={(e) => updateContact("linkedin", e.target.value)} />
+            <input aria-label="LinkedIn URL" value={profile.contact.linkedin} onChange={(e) => updateContact("linkedin", e.target.value)} />
           </div>
           <div>
             <label>Website</label>
-            <input value={profile.contact.website} onChange={(e) => updateContact("website", e.target.value)} />
+            <input aria-label="Website URL" value={profile.contact.website} onChange={(e) => updateContact("website", e.target.value)} />
           </div>
         </div>
       </div>
@@ -557,15 +559,15 @@ export default function ProfilePage() {
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
                 <label>Company</label>
-                <input value={exp.company} onChange={(e) => updateExperience(i, "company", e.target.value)} />
+                <input aria-label="Company" value={exp.company} onChange={(e) => updateExperience(i, "company", e.target.value)} />
               </div>
               <div>
                 <label>Title</label>
-                <input value={exp.title} onChange={(e) => updateExperience(i, "title", e.target.value)} />
+                <input aria-label="Job title" value={exp.title} onChange={(e) => updateExperience(i, "title", e.target.value)} />
               </div>
               <div>
                 <label>Location</label>
-                <input value={exp.location} onChange={(e) => updateExperience(i, "location", e.target.value)} />
+                <input aria-label="Job location" value={exp.location} onChange={(e) => updateExperience(i, "location", e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -601,25 +603,25 @@ export default function ProfilePage() {
           <div key={edu.id} className="grid grid-cols-2 gap-3 mb-4 p-3 border border-gray-700 rounded-lg">
             <div>
               <label>School</label>
-              <input value={edu.school} onChange={(e) => {
+              <input aria-label="School" value={edu.school} onChange={(e) => {
                 const ed = [...profile.education]; ed[i] = { ...ed[i], school: e.target.value }; setProfile((p) => ({ ...p, education: ed }));
               }} />
             </div>
             <div>
               <label>Degree</label>
-              <input value={edu.degree} onChange={(e) => {
+              <input aria-label="Degree" value={edu.degree} onChange={(e) => {
                 const ed = [...profile.education]; ed[i] = { ...ed[i], degree: e.target.value }; setProfile((p) => ({ ...p, education: ed }));
               }} />
             </div>
             <div>
               <label>Field of Study</label>
-              <input value={edu.fieldOfStudy} onChange={(e) => {
+              <input aria-label="Field of study" value={edu.fieldOfStudy} onChange={(e) => {
                 const ed = [...profile.education]; ed[i] = { ...ed[i], fieldOfStudy: e.target.value }; setProfile((p) => ({ ...p, education: ed }));
               }} />
             </div>
             <div>
               <label>GPA</label>
-              <input value={edu.gpa ?? ""} onChange={(e) => {
+              <input aria-label="GPA" value={edu.gpa ?? ""} onChange={(e) => {
                 const ed = [...profile.education]; ed[i] = { ...ed[i], gpa: e.target.value }; setProfile((p) => ({ ...p, education: ed }));
               }} />
             </div>

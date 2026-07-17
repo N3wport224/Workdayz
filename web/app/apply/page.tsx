@@ -473,15 +473,21 @@ export default function ApplyPage() {
           />
           <button onClick={fetchJobUrl} disabled={!jobUrl.trim()} className="btn btn-secondary shrink-0">Fetch URL</button>
         </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            tailor();
+          }}
+        >
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label>Job Title</label>
-              <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. Software Engineer" />
+              <input required value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. Software Engineer" />
             </div>
             <div>
               <label>Company</label>
-              <input value={jobCompany} onChange={(e) => setJobCompany(e.target.value)} placeholder="e.g. Acme Corp" />
+              <input required value={jobCompany} onChange={(e) => setJobCompany(e.target.value)} placeholder="e.g. Acme Corp" />
             </div>
             <div>
               <label>Location</label>
@@ -491,6 +497,7 @@ export default function ApplyPage() {
           <div>
             <label>Job Description</label>
             <textarea
+              required
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
               placeholder="Paste the full job description here..."
@@ -530,12 +537,13 @@ export default function ApplyPage() {
           </select>
         </div>
         <button
-          onClick={tailor}
+          type="submit"
           disabled={tailoring || !profile || !jobDescription.trim()}
           className="btn btn-primary mt-4 w-full"
         >
           {tailoring ? "⏳ Tailoring with Claude..." : "✨ Tailor my resume"}
         </button>
+        </form>
         {templates.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
             <span>Or reuse a saved tailored resume:</span>
