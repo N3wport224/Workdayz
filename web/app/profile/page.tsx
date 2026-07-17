@@ -456,39 +456,39 @@ export default function ProfilePage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label>First Name</label>
-            <input value={profile.contact.firstName} onChange={(e) => updateContact("firstName", e.target.value)} />
+            <input aria-label="First name" value={profile.contact.firstName} onChange={(e) => updateContact("firstName", e.target.value)} />
           </div>
           <div>
             <label>Last Name</label>
-            <input value={profile.contact.lastName} onChange={(e) => updateContact("lastName", e.target.value)} />
+            <input aria-label="Last name" value={profile.contact.lastName} onChange={(e) => updateContact("lastName", e.target.value)} />
           </div>
           <div>
             <label>Preferred Name (optional — &ldquo;goes by&rdquo;)</label>
-            <input value={profile.contact.preferredName ?? ""} onChange={(e) => updateContact("preferredName", e.target.value)} />
+            <input aria-label="Preferred name" value={profile.contact.preferredName ?? ""} onChange={(e) => updateContact("preferredName", e.target.value)} />
           </div>
           <div>
             <label>Email</label>
-            <input type="email" value={profile.contact.email} onChange={(e) => updateContact("email", e.target.value)} />
+            <input aria-label="Email" type="email" value={profile.contact.email} onChange={(e) => updateContact("email", e.target.value)} />
           </div>
           <div>
             <label>Phone</label>
-            <input value={profile.contact.phone} onChange={(e) => updateContact("phone", e.target.value)} />
+            <input aria-label="Phone" value={profile.contact.phone} onChange={(e) => updateContact("phone", e.target.value)} />
           </div>
           <div>
             <label>Work Phone (optional)</label>
-            <input value={profile.contact.workPhone ?? ""} onChange={(e) => updateContact("workPhone", e.target.value)} />
+            <input aria-label="Work phone" value={profile.contact.workPhone ?? ""} onChange={(e) => updateContact("workPhone", e.target.value)} />
           </div>
           <div>
             <label>City</label>
-            <input value={profile.contact.city} onChange={(e) => updateContact("city", e.target.value)} />
+            <input aria-label="City" value={profile.contact.city} onChange={(e) => updateContact("city", e.target.value)} />
           </div>
           <div>
             <label>State</label>
-            <input value={profile.contact.state} onChange={(e) => updateContact("state", e.target.value)} />
+            <input aria-label="State" value={profile.contact.state} onChange={(e) => updateContact("state", e.target.value)} />
           </div>
           <div>
             <label>Postal Code</label>
-            <input value={profile.contact.postalCode} onChange={(e) => updateContact("postalCode", e.target.value)} />
+            <input aria-label="Postal code" value={profile.contact.postalCode} onChange={(e) => updateContact("postalCode", e.target.value)} />
           </div>
           <div>
             <label>Country</label>

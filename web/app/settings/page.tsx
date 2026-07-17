@@ -147,7 +147,7 @@ export default function SettingsPage() {
       <div className="card">
         <h2 className="font-semibold mb-3">Claude Model</h2>
         <select
-          value={settings.model}
+          aria-label="Claude model" value={settings.model}
           onChange={(e) => setSettings({ ...settings, model: e.target.value })}
         >
           <option value="">Server default</option>

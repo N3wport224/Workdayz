@@ -505,7 +505,7 @@ export default function ApplyPage() {
             className="!w-64 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs"
           />
           <select
-            value={letterTone}
+            aria-label="Cover letter tone" value={letterTone}
             onChange={(e) => setLetterTone(e.target.value)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto"
           >
@@ -517,7 +517,7 @@ export default function ApplyPage() {
           </select>
           <select
             value={letterLength}
-            onChange={(e) => setLetterLength(e.target.value as typeof letterLength)}
+            aria-label="Cover letter length" onChange={(e) => setLetterLength(e.target.value as typeof letterLength)}
             className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto"
           >
             <option value="">Letter length: default</option>

@@ -206,7 +206,7 @@ export default function ApplicationsPage() {
           Show archived
         </label>
         {/* Item 48: sorting */}
-        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm w-auto ml-auto">
+        <select aria-label="Sort applications" value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm w-auto ml-auto">
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
           <option value="ats">Highest ATS</option>

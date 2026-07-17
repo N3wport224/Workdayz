@@ -126,16 +126,16 @@ export function ExportButtons({
       {/* Items 23-26: layout, font, and section-order for the generated files */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
         <span>PDF style:</span>
-        <select className={selectCls} value={style.template} onChange={(e) => setStyle((s) => ({ ...s, template: e.target.value as PdfStyle["template"] }))}>
+        <select aria-label="PDF layout" className={selectCls} value={style.template} onChange={(e) => setStyle((s) => ({ ...s, template: e.target.value as PdfStyle["template"] }))}>
           <option value="classic">Classic layout</option>
           <option value="compact">Compact layout (fits more)</option>
         </select>
-        <select className={selectCls} value={style.font} onChange={(e) => setStyle((s) => ({ ...s, font: e.target.value as PdfStyle["font"] }))}>
+        <select aria-label="PDF font" className={selectCls} value={style.font} onChange={(e) => setStyle((s) => ({ ...s, font: e.target.value as PdfStyle["font"] }))}>
           <option value="Helvetica">Helvetica</option>
           <option value="Times-Roman">Times Roman</option>
           <option value="Courier">Courier</option>
         </select>
-        <select className={selectCls} value={style.sectionOrder} onChange={(e) => setStyle((s) => ({ ...s, sectionOrder: e.target.value as PdfStyle["sectionOrder"] }))}>
+        <select aria-label="Resume section order" className={selectCls} value={style.sectionOrder} onChange={(e) => setStyle((s) => ({ ...s, sectionOrder: e.target.value as PdfStyle["sectionOrder"] }))}>
           <option value="chronological">Chronological</option>
           <option value="skills-first">Skills-first (functional)</option>
         </select>

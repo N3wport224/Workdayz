@@ -32,6 +32,10 @@ jobs:
         run: npm run test:ui
         env:
           ANTHROPIC_API_KEY: ci-placeholder
+      - name: Accessibility audit (fails on critical violations)
+        run: npm run test:a11y
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
 
   extension:
     name: Extension (typecheck, build, DOM e2e)

@@ -480,6 +480,9 @@ export async function runAutofill(
     settings.smartFormatting ? normalizeFieldValue(label, value) : value;
   const skipSet = await loadSkipSet(); // item 60
   const fields = findFillableFields();
+  // Fields THIS run has written — a later synonym that substring-matches one
+  // of them ("address" ⊂ "email address") must not report a fake mismatch.
+  const filledThisRun = new Set<FillableElement>();
 
   // Surface (never touch) self-identification questions on this step.
   for (const el of fields) {
@@ -507,17 +510,21 @@ export async function runAutofill(
     const field = findFieldBySynonyms(fields, synonyms);
     if (field) {
       setFieldValue(field, formatted);
+      filledThisRun.add(field);
       summary.filled.push(key);
       continue;
     }
     // Field exists but is already filled: don't overwrite, but flag when the
     // employer-prefilled value differs from the profile (stale phone, etc.).
-    // Either the raw or the smart-formatted shape counts as a match.
+    // Either the raw or the smart-formatted shape counts as a match — and a
+    // field we filled ourselves is never a mismatch.
     const prefilled = findFieldBySynonyms(fields, synonyms, { onlyEmpty: false });
     if (prefilled && prefilled.value?.trim()) {
-      const existing = prefilled.value.trim();
-      if (existing !== value.trim() && existing !== formatted.trim()) {
-        summary.mismatches.push(`${key}: form has "${existing.slice(0, 40)}", profile has "${value.slice(0, 40)}"`);
+      if (!filledThisRun.has(prefilled)) {
+        const existing = prefilled.value.trim();
+        if (existing !== value.trim() && existing !== formatted.trim()) {
+          summary.mismatches.push(`${key}: form has "${existing.slice(0, 40)}", profile has "${value.slice(0, 40)}"`);
+        }
       }
       continue;
     }

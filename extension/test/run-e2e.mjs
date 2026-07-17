@@ -344,6 +344,41 @@ try {
   check("cert section grew to a 2nd panel", cc2 === "CSM - Scrum Alliance", `got "${cc2}"`);
   check("cert 2 no expiration left empty", (await sval("#ce2")) === "", `ce2="${await sval("#ce2")}"`);
   check("both certification panels reported", sSummary.filled.some((s) => s.includes("2 certification panel")), JSON.stringify(sSummary.filled));
+
+  // --- Tenant 2 (item 86): international labels, preferred/work-phone
+  // ordering, and the references block -------------------------------------
+  const t2Page = await browser.newPage();
+  await t2Page.goto("file://" + path.join(here, "fixture-tenant2.html"));
+  await t2Page.addScriptTag({ content: harnessJs });
+  const t2val = (sel) => t2Page.$eval(sel, (el) => el.value);
+
+  const t2Pkg = {
+    ...pkg,
+    contact: {
+      ...pkg.contact,
+      firstName: "Alex",
+      lastName: "Perez",
+      preferredName: "Lex",
+      phone: "555-010-0100",
+      workPhone: "555-222-3333",
+    },
+    references: [
+      { id: "r1", name: "Dana Manager", email: "dana@example.com", relationship: "Former manager" },
+    ],
+    experience: [], education: [], certificationDetails: [], certifications: [],
+    resumePdfBase64: "", resumeFileName: "", coverLetterPdfBase64: "", coverLetterFileName: "", coverLetterText: "",
+  };
+  const t2Summary = await t2Page.evaluate(async (p) => window.WorkdayzTest.runAutofill(p), t2Pkg);
+  console.log("tenant2 summary:", JSON.stringify(t2Summary));
+
+  check('intl label "Prénom" filled with first name', (await t2val("#t2first")) === "Alex", `t2first="${await t2val("#t2first")}"`);
+  check('intl label "Apellido" filled with last name', (await t2val("#t2last")) === "Perez", `t2last="${await t2val("#t2last")}"`);
+  check("preferred name got preferredName, not firstName", (await t2val("#t2pref")) === "Lex", `t2pref="${await t2val("#t2pref")}"`);
+  check("work phone got workPhone (smart-formatted)", (await t2val("#t2work")) === "(555) 222-3333", `t2work="${await t2val("#t2work")}"`);
+  check("mobile phone got the primary phone", (await t2val("#t2mobile")) === "(555) 010-0100", `t2mobile="${await t2val("#t2mobile")}"`);
+  check("reference name filled", (await t2val("#t2refname")) === "Dana Manager", `t2refname="${await t2val("#t2refname")}"`);
+  check("reference email filled", (await t2val("#t2refemail")) === "dana@example.com", `t2refemail="${await t2val("#t2refemail")}"`);
+  check("reference relationship filled", (await t2val("#t2refrel")) === "Former manager", `t2refrel="${await t2val("#t2refrel")}"`);
 } finally {
   await browser.close();
 }
