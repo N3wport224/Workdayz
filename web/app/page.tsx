@@ -11,12 +11,18 @@ export default function HomePage() {
   const [applications, setApps] = useState<TailoredApplication[]>([]);
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("checking");
   const [showTour, setShowTour] = useState(false);
+  // Item 92: live setup checklist inputs
+  const [hasServerKey, setHasServerKey] = useState<boolean | null>(null);
 
   useEffect(() => {
     setProfile(loadProfile());
     const apps = loadApplications();
     setApps(apps);
     setShowTour(!localStorage.getItem("workdayz-tour-done"));
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setHasServerKey(Boolean(d.apiKeyConfigured)))
+      .catch(() => setHasServerKey(null));
 
     // Listen for extension bridge status
     setBridgeStatus(getBridgeStatus());
@@ -74,6 +80,40 @@ export default function HomePage() {
             <span className={`status-dot ${bridgeStatus === "detected" ? "green" : bridgeStatus === "checking" ? "amber" : "red"}`} />
             {bridgeStatus === "detected" ? "Extension detected" : bridgeStatus === "checking" ? "Checking..." : "Extension not found"}
           </div>
+        </div>
+      </div>
+
+      {/* Item 92: live setup checklist — every row is a real check, not decoration */}
+      <div className="card">
+        <h2 className="font-semibold mb-3">Setup checklist</h2>
+        <div className="space-y-1.5 text-sm">
+          {[
+            {
+              ok: Boolean(profile?.contact.firstName && profile?.contact.email),
+              label: "Resume profile saved",
+              fix: <a href="/profile" className="text-blue-400 underline">import your resume</a>,
+            },
+            {
+              ok: hasServerKey === true,
+              label: "Anthropic API key configured",
+              fix: <a href="/settings" className="text-blue-400 underline">add it in Settings or .env.local</a>,
+            },
+            {
+              ok: bridgeStatus === "detected",
+              label: "Browser extension connected",
+              fix: <span>load <code className="text-blue-400">extension/dist</code> and connect from its popup</span>,
+            },
+            {
+              ok: applications.length > 0,
+              label: "First application tailored",
+              fix: <a href="/apply" className="text-blue-400 underline">tailor one on the Apply page</a>,
+            },
+          ].map((item, i) => (
+            <p key={i} className={item.ok ? "text-green-400" : "text-gray-400"}>
+              {item.ok ? "✅" : "⬜"} {item.label}
+              {!item.ok && <span className="text-gray-500"> — {item.fix}</span>}
+            </p>
+          ))}
         </div>
       </div>
 
@@ -156,6 +196,18 @@ export default function HomePage() {
           <a href="/profile" className="btn btn-primary">Set up your profile</a>
         </div>
       )}
+
+      {/* Item 94: how autofill actually works — linked from the extension widget */}
+      <details id="how-autofill-works" className="card text-sm text-gray-400">
+        <summary className="font-semibold text-gray-200 cursor-pointer">ℹ️ How the autofill actually works</summary>
+        <ul className="mt-3 space-y-2 list-disc list-inside">
+          <li><span className="text-gray-300">It fills from your structured profile, not from the PDF.</span> The extension reads the contact/experience/education/certification data you saved here — the generated PDF is what gets uploaded as your resume file, but the form fields come from the data.</li>
+          <li><span className="text-gray-300">Field matching is by label.</span> Each Workday tenant names fields differently (&ldquo;From&rdquo; vs &ldquo;Start Date&rdquo;); the extension matches on a library of label synonyms, grows &ldquo;Add&rdquo; sections to fit all your entries, and handles Workday&apos;s special date and dropdown widgets.</li>
+          <li><span className="text-gray-300">Dates matter.</span> Everything is normalized to MM/YYYY because that&apos;s what Workday&apos;s widgets parse reliably.</li>
+          <li><span className="text-gray-300">Nothing is ever submitted for you.</span> The extension fills and stops — you review every page and click Workday&apos;s own buttons. Self-identification questions are never touched.</li>
+          <li><span className="text-gray-300">If a field doesn&apos;t fill</span>, use the widget&apos;s preview table, custom rules (label = value), or the &ldquo;Correct one field&rdquo; tool — and the field report helps get new labels supported.</li>
+        </ul>
+      </details>
     </div>
   );
 }

@@ -121,6 +121,8 @@ export function mountWidget(title: string): Widget {
       </div>
       <div id="resultArea"></div>
       <div id="actions"></div>
+      <a id="howLink" href="#" target="_blank" rel="noreferrer"
+         style="display:none;font-size:10px;color:#9ca3af;text-decoration:underline;">How the autofill works ↗</a>
     </div>
     <button class="bubble" id="bubble" title="Open Workdayz">W</button>
   `;
@@ -168,6 +170,15 @@ export function mountWidget(title: string): Widget {
       // Item 71: honor the theme setting in the on-page widget too.
       const theme = (data["workdayz.settings"] as { theme?: string } | undefined)?.theme;
       if (theme === "light") panel.classList.add("light");
+    });
+    // Item 94: link to the web app's autofill explainer.
+    chrome.storage.local.get("workdayz.webAppOrigin").then((data) => {
+      const origin = data["workdayz.webAppOrigin"] as string | undefined;
+      if (origin) {
+        const link = shadow.getElementById("howLink") as HTMLAnchorElement;
+        link.href = `${origin.replace(/\/$/, "")}/#how-autofill-works`;
+        link.style.display = "inline";
+      }
     });
   } catch {
     /* orphaned script */
