@@ -60,6 +60,9 @@ export interface IncrementalPlan {
   rawValue: string;
   newValue: string;
   action: "fill" | "skip-prefilled" | "skip-mismatch";
+  /** Item 59: how sure we are this field is the right target — "high" when
+   * the primary label matched, "medium" when a looser synonym did. */
+  confidence: "high" | "medium";
 }
 
 export function planIncrementalFill(
@@ -89,6 +92,8 @@ export function planIncrementalFill(
     const field = findFieldBySynonyms(fields, synonyms, { onlyEmpty: false });
     if (!field) continue;
     const normalized = normalizeFieldValue(synonyms[0], value);
+    // Primary-label match = high confidence; a looser synonym = medium.
+    const label = fieldLabelText(field).toLowerCase();
     plans.push({
       field,
       label: key,
@@ -96,6 +101,7 @@ export function planIncrementalFill(
       rawValue: value,
       newValue: normalized,
       action: field.value?.trim() ? "skip-prefilled" : "fill",
+      confidence: label.includes(synonyms[0]) ? "high" : "medium",
     });
   }
 

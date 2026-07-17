@@ -1,7 +1,7 @@
 import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type CustomFillRule, type JobPosting, type QuestionAnswer, type RuntimeMessage } from "../types";
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm } from "./autofill";
-import { undoFill } from "./dom-utils";
+import { undoFill, fieldLabelText, setFieldValue, findFillableFields, type FillableElement } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
 import { getSettings } from "./features";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
@@ -57,6 +57,7 @@ function packageFromProfile(profile: BaseProfile): AutofillPackage {
     education: profile.education,
     certifications: profile.certifications,
     certificationDetails: profile.certificationDetails,
+    references: profile.references,
     coverLetterText: "",
     resumePdfBase64: "",
     resumeFileName: "",
@@ -123,6 +124,59 @@ async function getCustomRules(): Promise<CustomFillRule[]> {
     return rules;
   } catch {
     return []; // orphaned script
+  }
+}
+
+// --- items 58/60: tenant fingerprints + user skip-list ---------------------
+
+function currentLabelSet(): string[] {
+  return [...new Set(findFillableFields().map((f) => fieldLabelText(f).toLowerCase()).filter(Boolean))].slice(0, 80);
+}
+
+/** Item 58: warn when this tenant's form labels shifted a lot since the last
+ * successful fill — the usual cause of silently degraded autofill. */
+async function tenantDriftWarning(): Promise<string> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.tenantFingerprints);
+    const map = (data[STORAGE_KEYS.tenantFingerprints] ?? {}) as Record<string, string[]>;
+    const prev = map[location.hostname];
+    if (!prev?.length) return "";
+    const now = currentLabelSet();
+    if (!now.length) return "";
+    const prevSet = new Set(prev);
+    const overlap = now.filter((l) => prevSet.has(l)).length;
+    const union = new Set([...prev, ...now]).size;
+    return union > 0 && overlap / union < 0.4
+      ? " ⚠ This site's forms look different from your last fill here — double-check the results."
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+async function storeTenantFingerprint(): Promise<void> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.tenantFingerprints);
+    const map = (data[STORAGE_KEYS.tenantFingerprints] ?? {}) as Record<string, string[]>;
+    map[location.hostname] = currentLabelSet();
+    await chrome.storage.local.set({ [STORAGE_KEYS.tenantFingerprints]: map });
+  } catch {
+    /* orphaned script */
+  }
+}
+
+/** Item 60: remember a field label the user never wants filled on this site. */
+async function addSkipField(label: string): Promise<void> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.skipFields);
+    const map = (data[STORAGE_KEYS.skipFields] ?? {}) as Record<string, string[]>;
+    const list = map[location.hostname] ?? [];
+    const trimmed = label.toLowerCase().slice(0, 40);
+    if (trimmed && !list.includes(trimmed)) list.push(trimmed);
+    map[location.hostname] = list;
+    await chrome.storage.local.set({ [STORAGE_KEYS.skipFields]: map });
+  } catch {
+    /* orphaned script */
   }
 }
 
@@ -209,10 +263,16 @@ async function runAutofillNow(widget: import("./widget").Widget) {
 
   const settings = await getSettings();
   const confidenceNote = settings.showConfidenceScore ? ` Fill confidence: ${result.confidence.label}.` : "";
+  // Item 65: explain WHY self-ID questions were left untouched.
+  const selfIdNote = result.leftForYou?.length
+    ? " Self-identification questions (veteran/disability/gender/ethnicity) are never auto-filled — those answers are yours alone."
+    : "";
   const suffix = source.tailored
     ? "Review before continuing — nothing is submitted automatically."
     : "Filled from your base profile — tailor this job in the web app to also attach a matched resume & cover letter.";
-  widget.setStatus(`${result.filled.length} field group(s) filled.${confidenceNote} ${suffix}${staleWarning(source.pkg, source.tailored)}`);
+  widget.setStatus(`${result.filled.length} field group(s) filled.${confidenceNote} ${suffix}${selfIdNote}${staleWarning(source.pkg, source.tailored)}`);
+  // Item 58: remember this tenant's form shape for drift detection next time.
+  void storeTenantFingerprint();
   // Toolbar badge mirrors the fill count for at-a-glance confirmation.
   sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
   void recordFillForPage(result.filled.length);
@@ -223,7 +283,7 @@ function initApplicationFormWidget() {
   const widget = mountWidget("Workdayz");
   widget.setStatus("Checking for a tailored application...");
 
-  Promise.all([getFillSource(), previousFillForPage(), getSettings()]).then(([source, previous, settings]) => {
+  Promise.all([getFillSource(), previousFillForPage(), getSettings(), tenantDriftWarning()]).then(([source, previous, settings, drift]) => {
     const alreadyFilled = previous
       ? ` You already filled this page (${previous.filled} field group(s), ${new Date(previous.at).toLocaleString()}).`
       : "";
@@ -231,8 +291,8 @@ function initApplicationFormWidget() {
       source === null
         ? "Nothing to fill from yet — save your resume profile in the Workdayz web app first."
         : source.tailored
-          ? `Ready — using ${sourceName(source)}: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}`
-          : `Ready — using your Base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}`,
+          ? `Ready — using ${sourceName(source)}: "${source.pkg.job.title}" at ${source.pkg.job.company} (ATS ${source.pkg.atsScore}/100).${staleWarning(source.pkg, true)}${alreadyFilled}${drift}`
+          : `Ready — using your Base profile. Tailor this job in the web app to also attach a matched resume & cover letter.${alreadyFilled}${drift}`,
     );
     // Opt-in setting: fill as soon as an application step appears — but only
     // if THIS page hasn't been filled before (step memory prevents re-fill
@@ -259,12 +319,36 @@ function initApplicationFormWidget() {
       if (preview.files.length) parts.push(`attach ${preview.files.join(" & ")}`);
       if (preview.experiencePanels) parts.push(`fill ${preview.experiencePanels} experience panel(s)`);
       if (preview.educationPanels) parts.push(`fill ${preview.educationPanels} education panel(s)`);
-      // Surface what smart formatting would change, so nothing is a surprise.
-      const reformatted = preview.incrementalPlan.filter((p) => p.action === "fill" && p.newValue !== String(source.pkg.contact[p.label as keyof typeof source.pkg.contact] ?? p.newValue));
-      if (reformatted.length) parts.push(`smart-format ${reformatted.length} value(s)`);
       widget.setStatus(
         `PREVIEW — ${parts.join(", ")}. Dropdowns and split dates resolve during the real fill. Nothing was changed.`,
       );
+      // Items 55/59/60: visual field→value table with per-field confidence
+      // and a "never fill this on this site" toggle.
+      widget.resultArea.innerHTML = "";
+      for (const plan of preview.incrementalPlan) {
+        const row = document.createElement("div");
+        row.className = "result-detail";
+        row.style.cssText = "display:flex;gap:6px;align-items:center;padding:2px 0;border-bottom:1px solid #1f2937;";
+        const conf = document.createElement("span");
+        conf.textContent = plan.confidence === "high" ? "●" : "◐";
+        conf.title = plan.confidence === "high" ? "High confidence match" : "Looser synonym match — double-check";
+        conf.style.color = plan.confidence === "high" ? "#34d399" : "#fbbf24";
+        const text = document.createElement("span");
+        text.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        text.textContent = `${plan.label}: ${plan.action === "fill" ? plan.newValue : `(prefilled: ${plan.currentValue.slice(0, 18)})`}`;
+        text.title = `${fieldLabelText(plan.field)} → ${plan.newValue}`;
+        const skipBtn = document.createElement("button");
+        skipBtn.textContent = "🚫";
+        skipBtn.title = "Never autofill this field on this site";
+        skipBtn.style.cssText = "background:none;border:none;cursor:pointer;font-size:11px;opacity:.7;";
+        skipBtn.addEventListener("click", async () => {
+          await addSkipField(fieldLabelText(plan.field) || plan.label);
+          text.style.textDecoration = "line-through";
+          skipBtn.disabled = true;
+        });
+        row.append(conf, text, skipBtn);
+        widget.resultArea.appendChild(row);
+      }
     } catch {
       widget.setStatus("The extension was updated — reload this page and try again.");
     }
@@ -319,6 +403,37 @@ function initApplicationFormWidget() {
     } finally {
       answersBtn.disabled = false;
     }
+  });
+
+  // Item 56: one-shot manual correction — click any field, type its value.
+  addButton(widget.root, "🎯 Correct one field (click it)", () => {
+    widget.setStatus("Correction mode: click any form field to set a new value. Press Esc to cancel.");
+    const cleanup = (msg: string) => {
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("keydown", onKey, true);
+      widget.setStatus(msg);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cleanup("Correction cancelled.");
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("#workdayz-widget-host")) return; // ignore our own UI
+      const field = target.closest("input, textarea, select") as FillableElement | null;
+      if (!field) return; // keep waiting for a real field
+      e.preventDefault();
+      e.stopPropagation();
+      const label = fieldLabelText(field).slice(0, 60) || "this field";
+      const next = window.prompt(`New value for "${label}":`, field.value ?? "");
+      if (next !== null) {
+        setFieldValue(field, next);
+        cleanup(`Set "${label}". Review it before continuing.`);
+      } else {
+        cleanup("Correction cancelled.");
+      }
+    };
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("keydown", onKey, true);
   });
 
   addButton(widget.root, "Undo last fill", () => {

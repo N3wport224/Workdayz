@@ -113,6 +113,7 @@ export default function ProfilePage() {
         education: profile.education,
         certifications: profile.certifications.map((c) => c.name),
         certificationDetails: profile.certifications,
+        references: profile.references,
       });
     }
     setSaved(true);
@@ -372,6 +373,59 @@ export default function ProfilePage() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Item 64: professional references */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="font-semibold">References (optional)</h2>
+          <button
+            onClick={() =>
+              setProfile((p) => ({
+                ...p,
+                references: [...(p.references ?? []), { id: `ref-${Date.now()}`, name: "" }],
+              }))
+            }
+            className="btn btn-secondary btn-sm"
+          >
+            + Add reference
+          </button>
+        </div>
+        <p className="text-sm text-gray-400 mb-3">
+          Some Workday applications ask for references — the extension fills the first one it can match.
+          Ask each person before listing them.
+        </p>
+        {(profile.references ?? []).map((ref, idx) => (
+          <div key={ref.id} className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3 p-3 bg-gray-800 rounded-lg">
+            {([
+              ["name", "Full name"],
+              ["title", "Their title"],
+              ["company", "Company"],
+              ["email", "Email"],
+              ["phone", "Phone"],
+              ["relationship", "Relationship (e.g. former manager)"],
+            ] as const).map(([field, label]) => (
+              <div key={field}>
+                <label className="text-xs text-gray-500">{label}</label>
+                <input
+                  value={ref[field] ?? ""}
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      references: (p.references ?? []).map((r, i) => (i === idx ? { ...r, [field]: e.target.value } : r)),
+                    }))
+                  }
+                />
+              </div>
+            ))}
+            <button
+              onClick={() => setProfile((p) => ({ ...p, references: (p.references ?? []).filter((_, i) => i !== idx) }))}
+              className="btn btn-secondary btn-sm text-red-400 self-end"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Contact info */}

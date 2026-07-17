@@ -21,8 +21,26 @@ import {
   startFillLog,
   type FillableElement,
 } from "./dom-utils";
-import { normalizeFieldValue } from "./fill-engine";
+import { normalizeFieldValue, expandWithInternational } from "./fill-engine";
 import { getSettings } from "./features";
+import { STORAGE_KEYS } from "../types";
+
+/** Item 60: labels the user chose to never autofill on this tenant. */
+async function loadSkipSet(): Promise<Set<string>> {
+  try {
+    const data = await chrome.storage.local.get(STORAGE_KEYS.skipFields);
+    const map = (data[STORAGE_KEYS.skipFields] ?? {}) as Record<string, string[]>;
+    return new Set((map[location.hostname] ?? []).map((s) => s.toLowerCase()));
+  } catch {
+    return new Set();
+  }
+}
+
+function isSkipped(skip: Set<string>, label: string): boolean {
+  const lower = label.toLowerCase();
+  for (const s of skip) if (lower.includes(s)) return true;
+  return false;
+}
 
 // Self-identification and similar personal questions are NEVER autofilled or
 // auto-drafted — they're the applicant's alone to answer.
@@ -196,7 +214,7 @@ function fillDateInContainer(container: HTMLElement, value: string): boolean {
  * (2) split segments whose own label carries the group word, (3) a plain
  * single field. Returns false if nothing matched.
  */
-function tryFillDate(panel: HTMLElement, scoped: FillableElement[], groupSynonyms: string[], value: string): boolean {
+function tryFillDateOnce(panel: HTMLElement, scoped: FillableElement[], groupSynonyms: string[], value: string): boolean {
   const container = findDateContainer(panel, groupSynonyms);
   if (container && fillDateInContainer(container, value)) return true;
 
@@ -220,6 +238,25 @@ function tryFillDate(panel: HTMLElement, scoped: FillableElement[], groupSynonym
     return true;
   }
   return false;
+}
+
+/** True when SOME input in the date group actually holds a value. */
+function dateStuck(panel: HTMLElement, groupSynonyms: string[]): boolean {
+  const container = findDateContainer(panel, groupSynonyms);
+  if (!container) return true; // no group widget — nothing to verify against
+  return Array.from(container.querySelectorAll("input")).some((i) => i.value.trim() !== "");
+}
+
+/** Item 61: Workday sometimes re-renders a date widget right as we write to
+ * it, dropping the value. Verify the write landed and retry once after the
+ * SPA settles — the same resilience the Add-button path already has. */
+async function tryFillDate(panel: HTMLElement, scoped: FillableElement[], groupSynonyms: string[], value: string): Promise<boolean> {
+  const filled = tryFillDateOnce(panel, scoped, groupSynonyms, value);
+  if (!filled) return false;
+  if (dateStuck(panel, groupSynonyms)) return true;
+  await new Promise((r) => setTimeout(r, 350));
+  tryFillDateOnce(panel, scoped, groupSynonyms, value);
+  return dateStuck(panel, groupSynonyms);
 }
 
 function fillWithinPanel(
@@ -441,6 +478,7 @@ export async function runAutofill(
   setFillHighlight(settings.highlightFilledFields);
   const smartValue = (label: string, value: string): string =>
     settings.smartFormatting ? normalizeFieldValue(label, value) : value;
+  const skipSet = await loadSkipSet(); // item 60
   const fields = findFillableFields();
 
   // Surface (never touch) self-identification questions on this step.
@@ -451,13 +489,21 @@ export async function runAutofill(
     }
   }
 
-  for (const [key, synonyms] of CONTACT_SYNONYMS) {
+  for (const [key, rawSynonyms] of CONTACT_SYNONYMS) {
     const value = pkg.contact[key];
     if (!value) continue;
+    // Item 57: augment with known international label variants (prénom,
+    // apellido, PLZ…) so non-English tenants match too.
+    const synonyms = expandWithInternational(rawSynonyms);
+    // Item 60: user-skipped fields on this tenant are never touched.
+    if (isSkipped(skipSet, synonyms[0])) {
+      summary.skipped.push(`${key} (skipped by you on this site)`);
+      continue;
+    }
     // Normalize by the field's primary label ("phone number" → formatPhone…).
     // Only text inputs get the formatted value — listbox/combobox selection
     // must match the raw option text.
-    const formatted = smartValue(synonyms[0], value);
+    const formatted = smartValue(rawSynonyms[0], value);
     const field = findFieldBySynonyms(fields, synonyms);
     if (field) {
       setFieldValue(field, formatted);
@@ -532,6 +578,43 @@ export async function runAutofill(
     summary.filesAttached.push("cover letter");
   }
 
+  // Item 63: extra document (writing sample, portfolio…) — only into inputs
+  // that aren't the resume/cover-letter ones.
+  if (pkg.extraFile?.base64) {
+    const extraInput = findFileInputBySynonyms([
+      "writing sample", "portfolio", "work sample", "additional document", "other document", "supporting document",
+    ]);
+    if (extraInput && extraInput !== resumeInput && extraInput !== coverLetterInput) {
+      attachFileToInput(extraInput, pkg.extraFile.base64, pkg.extraFile.name);
+      summary.filesAttached.push(pkg.extraFile.name);
+    }
+  }
+
+  // Item 64: first professional reference (single-panel best effort — extra
+  // reference panels vary too much per tenant to grow blindly).
+  const ref = pkg.references?.find((r) => r.name?.trim());
+  if (ref) {
+    const refPairs: [string[], string | undefined][] = [
+      [["reference name", "referee name", "name of reference"], ref.name],
+      [["reference title", "referee title"], ref.title],
+      [["reference company", "reference organization", "referee company"], ref.company],
+      [["reference email", "referee email"], ref.email],
+      [["reference phone", "referee phone"], ref.phone],
+      [["relationship to you", "relationship"], ref.relationship],
+    ];
+    let refFilled = 0;
+    const fresh = findFillableFields();
+    for (const [syns, val] of refPairs) {
+      if (!val?.trim()) continue;
+      const f = findFieldBySynonyms(fresh, syns);
+      if (f) {
+        setFieldValue(f, val);
+        refFilled += 1;
+      }
+    }
+    if (refFilled > 0) summary.filled.push(`reference: ${ref.name} (${refFilled} field(s))`);
+  }
+
   // Some tenants ask for the cover letter as a textarea instead of a file.
   const coverLetterTextarea = findFieldBySynonyms(
     fields.filter((f) => f instanceof HTMLTextAreaElement),
@@ -553,12 +636,12 @@ export async function runAutofill(
       const companyCombo = findComboboxBySynonyms(panel, COMPANY_SYNONYMS);
       if (companyCombo) await fillSearchCombobox(companyCombo, entry.company);
     }
-    tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
+    await tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
     if (isPresentDate(entry.endDate)) {
       const checkbox = findCheckboxBySynonyms(panel, CURRENT_ROLE_SYNONYMS);
       if (checkbox) setCheckbox(checkbox, true);
     } else {
-      tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
+      await tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
     }
     const description = findFieldBySynonyms(scoped, ["role description", "job description", "description"]);
     if (description) setFieldValue(description, entry.bullets.map((b) => `• ${b}`).join("\n"));
@@ -597,8 +680,8 @@ export async function runAutofill(
       [["field of study", "major"], entry.fieldOfStudy],
       [["gpa"], entry.gpa ?? ""],
     ]);
-    tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
-    tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
+    await tryFillDate(panel, scoped, START_DATE_TERMS, entry.startDate);
+    await tryFillDate(panel, scoped, END_DATE_TERMS, entry.endDate);
   });
   if (educationResult.filledCount) summary.filled.push(`${educationResult.filledCount} education panel(s)`);
   if (educationResult.remaining) {
@@ -629,8 +712,8 @@ export async function runAutofill(
         }
       }
       if (entry.issuer) fillWithinPanel(panel, scoped, [[ISSUER_SYNONYMS, entry.issuer]]);
-      if (entry.issueDate) tryFillDate(panel, scoped, ISSUED_DATE_TERMS, entry.issueDate);
-      if (entry.expirationDate) tryFillDate(panel, scoped, EXPIRATION_DATE_TERMS, entry.expirationDate);
+      if (entry.issueDate) await tryFillDate(panel, scoped, ISSUED_DATE_TERMS, entry.issueDate);
+      if (entry.expirationDate) await tryFillDate(panel, scoped, EXPIRATION_DATE_TERMS, entry.expirationDate);
     },
   );
   if (certResult.filledCount) summary.filled.push(`${certResult.filledCount} certification panel(s)`);

@@ -87,7 +87,12 @@ export async function runEnhancedAutofill(
     showToast(`${errors.length} data issue(s) found — check the widget for details`, "warning");
   }
   if (missingRequired.length > 0) {
-    showToast(`${missingRequired.length} required field(s) have no data`, "info", 3000);
+    const names = missingRequired.slice(0, 3).map((f) => f.fieldLabel || f.name).join(", ");
+    showToast(
+      `${missingRequired.length} required field(s) have no profile data: ${names}${missingRequired.length > 3 ? "…" : ""}`,
+      "info",
+      4000,
+    );
   }
   if (staleness.stale) {
     showToast(staleness.message, "warning", 3000);

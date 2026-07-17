@@ -62,6 +62,17 @@ export interface ResumeSource {
   label: string;
 }
 
+/** A professional reference (item 64) — filled into Workday reference panels. */
+export interface ReferenceEntry {
+  id: string;
+  name: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  relationship?: string;
+}
+
 export interface AutofillPackage {
   version: 1;
   createdAt: string;
@@ -74,6 +85,9 @@ export interface AutofillPackage {
   certifications: string[];
   certificationDetails?: CertificationEntry[];
   resumeSource?: ResumeSource;
+  references?: ReferenceEntry[];
+  /** Item 63: an extra document (writing sample, portfolio PDF…). */
+  extraFile?: { name: string; base64: string };
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;
@@ -92,6 +106,7 @@ export interface BaseProfile {
   education: EducationEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];
+  references?: ReferenceEntry[];
   /** Set by the background worker when the web app syncs the profile. */
   syncedAt?: string;
 }
@@ -121,6 +136,12 @@ export const STORAGE_KEYS = {
   /** "tailored" (default: job package first, base profile fallback) or
    * "profile" (always fill from the base profile). Set from the popup. */
   fillSource: "workdayz.fillSource",
+  /** Item 60 — Record<hostname, string[]>: field labels the user never wants
+   * autofilled on that tenant. */
+  skipFields: "workdayz.skipFields",
+  /** Item 58 — Record<hostname, string[]>: the form-label fingerprint from
+   * the last successful fill, to detect tenant DOM changes. */
+  tenantFingerprints: "workdayz.tenantFingerprints",
   /** Active autofill session tracking */
   activeSession: "workdayz.activeSession",
   /** Local usage analytics */

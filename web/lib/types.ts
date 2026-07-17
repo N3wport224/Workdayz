@@ -71,6 +71,17 @@ export interface ResumeSource {
   label: string;
 }
 
+/** A professional reference (item 64) — mirrored in extension/src/types.ts. */
+export interface ReferenceEntry {
+  id: string;
+  name: string;
+  title?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  relationship?: string;
+}
+
 export interface AutofillPackage {
   version: 1;
   createdAt: string;
@@ -83,6 +94,9 @@ export interface AutofillPackage {
   certifications: string[];
   certificationDetails?: CertificationEntry[];
   resumeSource?: ResumeSource;
+  references?: ReferenceEntry[];
+  /** Item 63: an extra document (writing sample, portfolio PDF…). */
+  extraFile?: { name: string; base64: string };
   coverLetterText: string;
   resumePdfBase64: string;
   resumeFileName: string;
@@ -102,6 +116,8 @@ export interface ResumeProfile {
   /** Optional headshot (small data URL). Stored for regions whose employers
    * expect one; NEVER rendered into the ATS-safe PDF (item 18). */
   photoDataUrl?: string;
+  /** Item 64: professional references for Workday reference panels. */
+  references?: ReferenceEntry[];
 }
 
 export interface TailoredApplication {
@@ -189,6 +205,7 @@ export interface BaseProfile {
   projects?: ProjectEntry[];
   certifications: string[];
   certificationDetails?: CertificationEntry[];
+  references?: ReferenceEntry[];
   syncedAt?: string;
 }
 

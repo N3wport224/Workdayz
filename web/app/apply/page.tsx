@@ -54,6 +54,8 @@ export default function ApplyPage() {
   const [batchRunning, setBatchRunning] = useState(false);
   // Item 32: saved tailored-resume templates
   const [templates, setTemplates] = useState<{ name: string; summary: string; skills: string[]; bullets: { id: string; original: string; tailored: string }[]; coverLetter: string }[]>([]);
+  // Item 63: optional extra attachment (writing sample, portfolio…)
+  const [extraFile, setExtraFile] = useState<{ name: string; base64: string } | null>(null);
 
   const TEMPLATES_KEY = "workdayz-resume-templates";
   const loadTemplatesList = () => {
@@ -283,6 +285,8 @@ export default function ApplyPage() {
       certifications: profile.certifications.map((c) => c.name),
       certificationDetails: profile.certifications,
       resumeSource: { kind: chosen.kind, label: chosen.label },
+      references: profile.references,
+      extraFile: extraFile ?? undefined,
       coverLetterText: chosen.coverLetter,
       resumePdfBase64: "",
       resumeFileName: `resume-${job.company?.toLowerCase().replace(/\s+/g, "-") ?? "position"}.pdf`,
@@ -867,6 +871,27 @@ export default function ApplyPage() {
               <button onClick={saveAsTemplate} className="btn btn-secondary" title="Reuse this tailored resume on similar roles later.">
                 💾 Save as template
               </button>
+              <label className="btn btn-secondary cursor-pointer" title="Writing sample / portfolio PDF — attached by the extension when the form asks for one.">
+                {extraFile ? `📎 ${extraFile.name.slice(0, 18)} ✓` : "📎 Extra attachment"}
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    f.arrayBuffer().then((buf) => {
+                      const bytes = new Uint8Array(buf);
+                      let binary = "";
+                      for (let i = 0; i < bytes.length; i += 0x8000) {
+                        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+                      }
+                      setExtraFile({ name: f.name, base64: btoa(binary) });
+                    });
+                    e.target.value = "";
+                  }}
+                />
+              </label>
               {(() => {
                 const chosen = resolveResumeChoice();
                 return chosen ? (

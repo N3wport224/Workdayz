@@ -7,6 +7,9 @@ const POSITION_KEY = "workdayz.widgetPosition"; // "right" (default) | "left"
 
 export interface Widget {
   root: HTMLElement;
+  /** The result region inside the shadow DOM — for callers that need to
+   * mount interactive nodes (e.g. the fill-preview table). */
+  resultArea: HTMLElement;
   setStatus(text: string): void;
   showProgress(step: string, current: number, total: number): void;
   showResult(summary: import("../types").AutofillRunSummary): void;
@@ -211,6 +214,7 @@ export function mountWidget(title: string): Widget {
 
   return {
     root: shadow.getElementById("actions") as unknown as HTMLElement,
+    resultArea: resultArea as HTMLElement,
     setStatus(text: string) {
       statusEl.textContent = text;
     },
