@@ -31,7 +31,16 @@ function experienceForExport(profile: ResumeProfile, chosen: ChosenResume) {
   });
 }
 
-function resumePdfBody(profile: ResumeProfile, chosen: ChosenResume, companyName: string) {
+/** PDF style knobs (items 23-26): layout template, font, section order. */
+export interface PdfStyle {
+  template: "classic" | "compact";
+  font: "Helvetica" | "Times-Roman" | "Courier";
+  sectionOrder: "chronological" | "skills-first";
+}
+
+export const DEFAULT_PDF_STYLE: PdfStyle = { template: "classic", font: "Helvetica", sectionOrder: "chronological" };
+
+function resumePdfBody(profile: ResumeProfile, chosen: ChosenResume, companyName: string, style: PdfStyle) {
   return {
     contact: profile.contact,
     summary: chosen.summary,
@@ -42,6 +51,7 @@ function resumePdfBody(profile: ResumeProfile, chosen: ChosenResume, companyName
     certificationDetails: profile.certifications,
     projects: profile.projects,
     companyName,
+    ...style,
   };
 }
 
@@ -83,6 +93,7 @@ export function ExportButtons({
   onStatus: (msg: string, isError?: boolean) => void;
 }) {
   const [busy, setBusy] = useState("");
+  const [style, setStyle] = useState<PdfStyle>(DEFAULT_PDF_STYLE);
 
   const pages = estimateResumePages({
     summary: chosen.summary,
@@ -108,17 +119,37 @@ export function ExportButtons({
     }
   };
 
+  const selectCls = "bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto";
+
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="w-full space-y-2">
+      {/* Items 23-26: layout, font, and section-order for the generated files */}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+        <span>PDF style:</span>
+        <select className={selectCls} value={style.template} onChange={(e) => setStyle((s) => ({ ...s, template: e.target.value as PdfStyle["template"] }))}>
+          <option value="classic">Classic layout</option>
+          <option value="compact">Compact layout (fits more)</option>
+        </select>
+        <select className={selectCls} value={style.font} onChange={(e) => setStyle((s) => ({ ...s, font: e.target.value as PdfStyle["font"] }))}>
+          <option value="Helvetica">Helvetica</option>
+          <option value="Times-Roman">Times Roman</option>
+          <option value="Courier">Courier</option>
+        </select>
+        <select className={selectCls} value={style.sectionOrder} onChange={(e) => setStyle((s) => ({ ...s, sectionOrder: e.target.value as PdfStyle["sectionOrder"] }))}>
+          <option value="chronological">Chronological</option>
+          <option value="skills-first">Skills-first (functional)</option>
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
       <button
-        onClick={() => run("Resume PDF", "/api/resume-pdf", resumePdfBody(profile, chosen, jobCompany), "resume.pdf")}
+        onClick={() => run("Resume PDF", "/api/resume-pdf", resumePdfBody(profile, chosen, jobCompany, style), "resume.pdf")}
         disabled={busy !== ""}
         className="btn btn-secondary"
       >
         {busy === "Resume PDF" ? "⏳ Rendering…" : "⬇ Resume PDF"}
       </button>
       <button
-        onClick={() => run("Resume DOCX", "/api/resume-docx", resumePdfBody(profile, chosen, jobCompany), "resume.docx")}
+        onClick={() => run("Resume DOCX", "/api/resume-docx", resumePdfBody(profile, chosen, jobCompany, style), "resume.docx")}
         disabled={busy !== ""}
         className="btn btn-secondary"
       >
@@ -153,10 +184,11 @@ export function ExportButtons({
               ? "bg-blue-900/40 text-blue-300 border-blue-700/40"
               : "bg-amber-900/40 text-amber-300 border-amber-700/40"
         }`}
-        title="Estimated length of the generated PDF."
+        title="Estimated length of the generated PDF. The compact layout fits roughly 15% more per page."
       >
-        ~{pages} page{pages === 1 ? "" : "s"}{pages > 2.05 ? " — consider trimming" : ""}
+        ~{pages} page{pages === 1 ? "" : "s"}{pages > 2.05 ? " — consider trimming or the compact layout" : ""}
       </span>
+      </div>
     </div>
   );
 }

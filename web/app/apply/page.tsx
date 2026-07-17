@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadProfile, loadSettings, saveApplication } from "@/lib/storage";
+import { loadProfile, loadSettings, saveApplication, loadApplications } from "@/lib/storage";
 import { sendAutofillPackage, getBridgeStatus } from "@/lib/extension-bridge";
 import { segmentByKeywords } from "@/lib/highlight-keywords";
+import { scoreResume, sectionReadiness, suggestImprovements, thinSections } from "@/lib/ats-score";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
 import { ExportButtons, BulletsCard, InterviewPrepCard, OutreachCard, QuestionsCard } from "@/components/ResultToolkit";
 import type { ResumeProfile, JobPosting, TailoredApplication, TailoredVariant, AtsBreakdown } from "@/lib/types";
@@ -41,6 +42,27 @@ export default function ApplyPage() {
   // default, a variant, or the untailored base profile. "tailored" | "profile"
   // | a variant id.
   const [resumeChoice, setResumeChoice] = useState("tailored");
+  // Items 27 + 33: tailoring style controls
+  const [industry, setIndustry] = useState("");
+  const [letterTone, setLetterTone] = useState("");
+  const [letterLength, setLetterLength] = useState<"" | "short" | "medium" | "long">("");
+  // Item 31: id of the tracker record for THIS tailoring run
+  const [lastAppId, setLastAppId] = useState("");
+  // Item 30: batch tailoring
+  const [batchUrls, setBatchUrls] = useState("");
+  const [batchLog, setBatchLog] = useState<string[]>([]);
+  const [batchRunning, setBatchRunning] = useState(false);
+  // Item 32: saved tailored-resume templates
+  const [templates, setTemplates] = useState<{ name: string; summary: string; skills: string[]; bullets: { id: string; original: string; tailored: string }[]; coverLetter: string }[]>([]);
+
+  const TEMPLATES_KEY = "workdayz-resume-templates";
+  const loadTemplatesList = () => {
+    try {
+      return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "[]") as typeof templates;
+    } catch {
+      return [];
+    }
+  };
 
   useEffect(() => {
     const p = loadProfile();
@@ -56,6 +78,8 @@ export default function ApplyPage() {
     const settings = loadSettings();
     setApiKey(settings.anthropicKey);
     setModel(settings.model);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pure localStorage read, stable across renders
+    setTemplates(loadTemplatesList());
     fetch("/api/health")
       .then((r) => r.json())
       .then((data) => setHasServerKey(Boolean(data.apiKeyConfigured)))
@@ -119,6 +143,9 @@ export default function ApplyPage() {
           },
           anthropicKey: apiKey || undefined,
           model: model || undefined,
+          industry: industry || undefined,
+          coverLetterTone: letterTone || undefined,
+          coverLetterLength: letterLength || undefined,
         }),
       });
 
@@ -168,6 +195,7 @@ export default function ApplyPage() {
         status: "draft",
       };
       saveApplication(app);
+      setLastAppId(app.id);
 
       setStatusMessage(`ATS Score: ${data.atsScore}/100 · Cost: $${data.estimatedCost}`);
     } catch (e) {
@@ -249,7 +277,105 @@ export default function ApplyPage() {
       coverLetterFileName: `cover-letter-${job.company?.toLowerCase().replace(/\s+/g, "-") ?? "position"}.pdf`,
       atsScore: chosen.atsScore,
     });
+    // Item 31: record on the tracker entry WHICH resume was actually sent, so
+    // response analytics can compare variants later.
+    if (lastAppId) {
+      const app = loadApplications().find((a) => a.id === lastAppId);
+      if (app) saveApplication({ ...app, sentResume: chosen.label, updatedAt: new Date().toISOString() });
+    }
     setStatusMessage(`✅ Sent to extension using ${chosen.label}. Open the Workday application form and click Autofill.`);
+  };
+
+  /** Item 30: tailor several postings back-to-back from their URLs. */
+  const runBatch = async () => {
+    if (!profile) return;
+    const urls = batchUrls.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http")).slice(0, 10);
+    if (urls.length === 0) return;
+    setBatchRunning(true);
+    setBatchLog([`Starting batch of ${urls.length}…`]);
+    for (const url of urls) {
+      try {
+        const jobRes = await fetch("/api/fetch-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const jobData = await jobRes.json();
+        if (jobData.error || !jobData.description) {
+          setBatchLog((l) => [...l, `✗ ${url} — ${jobData.error ?? "no description found"}`]);
+          continue;
+        }
+        const res = await fetch("/api/tailor", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profile,
+            job: { title: jobData.title, company: jobData.company, location: jobData.location ?? "", description: jobData.description, sourceUrl: url },
+            anthropicKey: apiKey || undefined,
+            model: model || undefined,
+            industry: industry || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.error) {
+          setBatchLog((l) => [...l, `✗ ${jobData.title ?? url} — ${data.error}`]);
+          continue;
+        }
+        saveApplication({
+          id: `app-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          createdAt: new Date().toISOString(),
+          job: { title: jobData.title, company: jobData.company, location: jobData.location ?? "", description: jobData.description, sourceUrl: url },
+          profile,
+          tailoredSummary: data.summary,
+          tailoredSkills: data.skills,
+          tailoredBullets: data.bullets,
+          coverLetter: data.coverLetter,
+          atsScore: data.atsScore,
+          atsBreakdown: data.atsBreakdown,
+          fitAnalysis: data.fitAnalysis,
+          variants: data.variants ?? [],
+          status: "draft",
+        });
+        setBatchLog((l) => [...l, `✓ ${jobData.title} at ${jobData.company} — ATS ${data.atsScore}/100 (saved to tracker)`]);
+      } catch {
+        setBatchLog((l) => [...l, `✗ ${url} — network error`]);
+      }
+    }
+    setBatchLog((l) => [...l, "Batch finished — everything is in the tracker."]);
+    setBatchRunning(false);
+  };
+
+  /** Item 32: save/load the current tailored resume as a named template. */
+  const saveAsTemplate = () => {
+    if (!result) return;
+    const name = prompt("Template name (e.g. \"Ops roles\"):")?.trim().slice(0, 40);
+    if (!name) return;
+    const list = loadTemplatesList().filter((t) => t.name !== name);
+    list.push({ name, summary: result.summary, skills: result.skills, bullets: result.bullets, coverLetter: result.coverLetter });
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list.slice(-20)));
+    setTemplates(list);
+    setStatusMessage(`Saved tailored resume as template "${name}".`);
+  };
+
+  const loadTemplate = (name: string) => {
+    const t = loadTemplatesList().find((tpl) => tpl.name === name);
+    if (!t || !profile) return;
+    // Re-score the template against the CURRENT job description so the ATS
+    // panel is honest for this posting, not the one it was tailored for.
+    const breakdown = scoreResume(jobDescription, jobTitle, t.summary, t.skills, t.bullets.map((b) => b.tailored), profile);
+    setResult({
+      summary: t.summary,
+      skills: t.skills,
+      bullets: t.bullets,
+      coverLetter: t.coverLetter,
+      fitAnalysis: { strengths: [], gaps: [], verdict: `Loaded from template "${t.name}" — re-scored against the current job description.` },
+      variants: [],
+      atsBreakdown: breakdown,
+      atsScore: breakdown.score,
+      estimatedCost: 0,
+    });
+    setLastAppId("");
+    setStatusMessage(`Loaded template "${t.name}" (ATS ${breakdown.score}/100 against this posting).`);
   };
 
   const scoreColor = (s: number) => s >= 80 ? "text-green-400" : s >= 60 ? "text-amber-400" : "text-red-400";
@@ -267,13 +393,15 @@ export default function ApplyPage() {
   const experienceForCards = () =>
     (profile?.experience ?? []).map((e) => ({ title: e.title, company: e.company, bullets: e.bullets }));
 
-  /** Item 5: a rewritten bullet replaces the tailored text in the result. */
+  /** Item 5: a rewritten bullet replaces the tailored text; item 39: the ATS
+   * score re-computes live so the number always reflects what's on screen. */
   const handleBulletChange = (id: string, newText: string) => {
-    setResult((prev) =>
-      prev
-        ? { ...prev, bullets: prev.bullets.map((b) => (b.id === id ? { ...b, tailored: newText } : b)) }
-        : prev,
-    );
+    setResult((prev) => {
+      if (!prev || !profile) return prev;
+      const bullets = prev.bullets.map((b) => (b.id === id ? { ...b, tailored: newText } : b));
+      const breakdown = scoreResume(jobDescription, jobTitle, prev.summary, prev.skills, bullets.map((b) => b.tailored), profile);
+      return { ...prev, bullets, atsBreakdown: breakdown, atsScore: breakdown.score };
+    });
   };
 
   return (
@@ -323,6 +451,37 @@ export default function ApplyPage() {
             />
           </div>
         </div>
+        {/* Items 27 + 33: tailoring style */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+          <span>Style:</span>
+          <input
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            placeholder="Industry phrasing (optional, e.g. healthcare)"
+            className="!w-64 bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs"
+          />
+          <select
+            value={letterTone}
+            onChange={(e) => setLetterTone(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto"
+          >
+            <option value="">Letter tone: default</option>
+            <option value="professional and warm">Professional &amp; warm</option>
+            <option value="confident and direct">Confident &amp; direct</option>
+            <option value="enthusiastic">Enthusiastic</option>
+            <option value="formal">Formal</option>
+          </select>
+          <select
+            value={letterLength}
+            onChange={(e) => setLetterLength(e.target.value as typeof letterLength)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto"
+          >
+            <option value="">Letter length: default</option>
+            <option value="short">Short (&lt;150 words)</option>
+            <option value="medium">Medium (200-280)</option>
+            <option value="long">Long (320-420)</option>
+          </select>
+        </div>
         <button
           onClick={tailor}
           disabled={tailoring || !profile || !jobDescription.trim()}
@@ -330,6 +489,53 @@ export default function ApplyPage() {
         >
           {tailoring ? "⏳ Tailoring with Claude..." : "✨ Tailor my resume"}
         </button>
+        {templates.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+            <span>Or reuse a saved tailored resume:</span>
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) loadTemplate(e.target.value);
+                e.target.value = "";
+              }}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-xs w-auto"
+              disabled={!jobDescription.trim()}
+            >
+              <option value="">Load template…</option>
+              {templates.map((t) => (
+                <option key={t.name} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+            {!jobDescription.trim() && <span>(paste a job description first so it can be re-scored)</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Item 30: batch tailoring */}
+      <div className="card">
+        <details>
+          <summary className="font-semibold cursor-pointer">⚡ Batch mode — tailor several postings at once</summary>
+          <p className="text-sm text-gray-400 mt-2 mb-2">
+            Paste up to 10 Workday posting URLs (one per line). Each is fetched, tailored with the
+            style settings above, and saved to the tracker.
+          </p>
+          <textarea
+            value={batchUrls}
+            onChange={(e) => setBatchUrls(e.target.value)}
+            placeholder={"https://company.wd1.myworkdayjobs.com/...\nhttps://other.wd5.myworkdayjobs.com/..."}
+            rows={3}
+          />
+          <button onClick={runBatch} disabled={batchRunning || !profile || !batchUrls.trim()} className="btn btn-secondary mt-2">
+            {batchRunning ? "⏳ Running batch…" : "Run batch"}
+          </button>
+          {batchLog.length > 0 && (
+            <div className="mt-3 p-3 bg-gray-800 rounded-lg text-xs space-y-1 max-h-48 overflow-y-auto">
+              {batchLog.map((line, i) => (
+                <p key={i} className={line.startsWith("✗") ? "text-red-400" : line.startsWith("✓") ? "text-green-400" : "text-gray-400"}>{line}</p>
+              ))}
+            </div>
+          )}
+        </details>
       </div>
 
       {/* Error */}
@@ -444,6 +650,64 @@ export default function ApplyPage() {
                 ))}
               </div>
             )}
+
+            {/* Item 34: per-section parseability */}
+            {profile && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {sectionReadiness(profile).map((s) => (
+                  <span
+                    key={s.section}
+                    title={s.detail}
+                    className={`px-2 py-0.5 rounded-full text-xs border ${
+                      s.status === "ok"
+                        ? "bg-green-900/40 text-green-300 border-green-700/40"
+                        : s.status === "warn"
+                          ? "bg-amber-900/40 text-amber-300 border-amber-700/40"
+                          : "bg-red-900/40 text-red-300 border-red-700/40"
+                    }`}
+                  >
+                    {s.status === "ok" ? "✓" : s.status === "warn" ? "⚠" : "✗"} {s.section}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Item 35: ranked improvement suggestions */}
+            {suggestImprovements(jobDescription, jobTitle, result.atsBreakdown).length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-gray-300 mb-1">📈 What would raise this score</p>
+                <ul className="space-y-1 text-xs">
+                  {suggestImprovements(jobDescription, jobTitle, result.atsBreakdown).map((s, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className={`px-1.5 rounded text-[10px] uppercase mt-0.5 ${
+                        s.impact === "high" ? "bg-red-900/50 text-red-300" : s.impact === "medium" ? "bg-amber-900/50 text-amber-300" : "bg-gray-700 text-gray-400"
+                      }`}>{s.impact}</span>
+                      <span className="text-gray-400">{s.suggestion}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Item 38: sections the JD emphasizes that the profile barely covers */}
+            {profile && thinSections(jobDescription, profile).length > 0 && (
+              <div className="mt-3 p-3 bg-amber-950/30 border border-amber-500/30 rounded-lg text-xs text-amber-300 space-y-1">
+                {thinSections(jobDescription, profile).map((f, i) => (
+                  <p key={i}>⚠ {f}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Item 37: how Workday's parser actually behaves */}
+            <details className="mt-4 text-xs text-gray-500">
+              <summary className="cursor-pointer text-gray-400">ℹ How Workday reads your resume</summary>
+              <ul className="mt-2 space-y-1 list-disc list-inside">
+                <li>Workday parses the resume PDF text-first — the generated PDFs here are single-column, no tables/images, exactly what its parser prefers.</li>
+                <li>Dates parse most reliably as MM/YYYY; that&apos;s the format this app normalizes to everywhere.</li>
+                <li>Workday pre-fills its form from the parsed resume, then the extension&apos;s autofill corrects/completes fields from your structured profile — so the form fields, not just the PDF, are what reviewers see.</li>
+                <li>Keywords matter twice: once for the recruiter&apos;s search inside Workday, once for any screening rules the employer set up.</li>
+              </ul>
+            </details>
           </div>
 
           {/* Variant tabs */}
@@ -586,6 +850,9 @@ export default function ApplyPage() {
                 className="btn btn-primary"
               >
                 {getBridgeStatus() === "detected" ? "📤 Send to extension" : "🔌 Extension not detected"}
+              </button>
+              <button onClick={saveAsTemplate} className="btn btn-secondary" title="Reuse this tailored resume on similar roles later.">
+                💾 Save as template
               </button>
               {(() => {
                 const chosen = resolveResumeChoice();

@@ -136,6 +136,118 @@ export function scoreResume(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Item 34: per-section parseability readiness
+// ---------------------------------------------------------------------------
+export interface SectionReadiness {
+  section: string;
+  status: "ok" | "warn" | "missing";
+  detail: string;
+}
+
+export function sectionReadiness(profile: ResumeProfile): SectionReadiness[] {
+  const out: SectionReadiness[] = [];
+
+  const hasEmail = Boolean(profile.contact.email.trim());
+  const hasPhone = Boolean(profile.contact.phone.trim());
+  out.push({
+    section: "Contact",
+    status: hasEmail || hasPhone ? (hasEmail && hasPhone ? "ok" : "warn") : "missing",
+    detail: hasEmail && hasPhone ? "Email + phone present" : hasEmail || hasPhone ? "Only one of email/phone" : "No email or phone — an ATS can't route you",
+  });
+
+  const datedRoles = profile.experience.filter((e) => /\d{4}/.test(e.startDate ?? ""));
+  out.push({
+    section: "Experience",
+    status: profile.experience.length === 0 ? "missing" : datedRoles.length === profile.experience.length ? "ok" : "warn",
+    detail:
+      profile.experience.length === 0
+        ? "No roles"
+        : `${datedRoles.length}/${profile.experience.length} roles have readable dates`,
+  });
+
+  out.push({
+    section: "Education",
+    status: profile.education.length ? "ok" : "warn",
+    detail: profile.education.length ? `${profile.education.length} entr(ies)` : "None listed",
+  });
+
+  out.push({
+    section: "Skills",
+    status: profile.skills.length >= 5 ? "ok" : profile.skills.length ? "warn" : "missing",
+    detail: `${profile.skills.length} skill(s)${profile.skills.length < 5 ? " — aim for 5+" : ""}`,
+  });
+
+  out.push({
+    section: "Certifications",
+    status: profile.certifications.length ? "ok" : "warn",
+    detail: profile.certifications.length ? `${profile.certifications.length} cert(s)` : "None — fine if you have none",
+  });
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Item 35: ranked, actionable "what would raise my score" suggestions
+// ---------------------------------------------------------------------------
+export function suggestImprovements(
+  jobDescription: string,
+  jobTitle: string,
+  breakdown: AtsBreakdown,
+): { suggestion: string; impact: "high" | "medium" | "low" }[] {
+  const jd = normalize(jobDescription);
+  const title = normalize(jobTitle);
+  const ranked = breakdown.missing
+    .map((kw) => {
+      const needle = normalize(kw);
+      const inTitle = title.includes(needle);
+      let count = 0;
+      let idx = jd.indexOf(needle);
+      while (idx !== -1) {
+        count += 1;
+        idx = jd.indexOf(needle, idx + needle.length);
+      }
+      return { kw, inTitle, count };
+    })
+    .sort((a, b) => Number(b.inTitle) - Number(a.inTitle) || b.count - a.count)
+    .slice(0, 8)
+    .map(({ kw, inTitle, count }) => ({
+      suggestion: inTitle
+        ? `Work "${kw}" into your summary or a bullet — it's in the job TITLE, the biggest single lift.`
+        : count >= 3
+          ? `Add "${kw}" if truthful — the posting repeats it ${count}×.`
+          : `Consider "${kw}" — mentioned in the description.`,
+      impact: (inTitle ? "high" : count >= 3 ? "medium" : "low") as "high" | "medium" | "low",
+    }));
+
+  for (const flag of breakdown.integrityFlags.slice(0, 2)) {
+    ranked.push({ suggestion: `Integrity: ${flag} — remove it or back it with a real bullet.`, impact: "high" });
+  }
+  return ranked;
+}
+
+// ---------------------------------------------------------------------------
+// Item 38: sections the JD emphasizes that the resume barely covers
+// ---------------------------------------------------------------------------
+export function thinSections(jobDescription: string, profile: ResumeProfile): string[] {
+  const jd = jobDescription.toLowerCase();
+  const flags: string[] = [];
+  if (/certif|license/.test(jd) && profile.certifications.length === 0) {
+    flags.push("The posting mentions certifications/licenses but your profile lists none.");
+  }
+  if (/\b(degree|bachelor|associate|diploma)\b/.test(jd) && profile.education.length === 0) {
+    flags.push("The posting mentions a degree but your profile has no education entries.");
+  }
+  const years = jd.match(/(\d+)\+?\s*years?/);
+  if (years && profile.experience.length === 0) {
+    flags.push(`The posting asks for ${years[1]}+ years of experience but your profile has no roles.`);
+  }
+  if (/\b(portfolio|github|work samples)\b/.test(jd) && !profile.contact.website && (profile.projects?.length ?? 0) === 0) {
+    flags.push("The posting mentions a portfolio/samples but your profile has no website or projects.");
+  }
+  return flags;
+}
+
 export function formatScoreColor(score: number): string {
   if (score >= 80) return "#059669"; // green
   if (score >= 60) return "#d97706"; // amber

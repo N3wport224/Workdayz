@@ -2,28 +2,43 @@ import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { CertificationEntry, ContactInfo, EducationEntry, ExperienceEntry, ProjectEntry } from "@/lib/types";
 import { formatDateRange } from "@/lib/format-date";
 
-// ATS-safe layouts: single column, standard built-in font, plain text only —
+// ATS-safe layouts: single column, standard built-in fonts, plain text only —
 // no tables, images, text boxes, or multi-column sections that resume
 // parsers commonly choke on. Templates only vary type size and spacing;
-// "compact" squeezes a long history onto fewer pages.
+// "compact" squeezes a long history onto fewer pages. Fonts are limited to
+// react-pdf's built-ins so no font files ever need fetching (item 24), and
+// "skills-first" ordering supports a functional-style resume (item 26).
 export const RESUME_TEMPLATES = ["classic", "compact"] as const;
 export type ResumeTemplate = (typeof RESUME_TEMPLATES)[number];
 
-function buildStyles(template: ResumeTemplate) {
+export const RESUME_FONTS = ["Helvetica", "Times-Roman", "Courier"] as const;
+export type ResumeFont = (typeof RESUME_FONTS)[number];
+
+export const SECTION_ORDERS = ["chronological", "skills-first"] as const;
+export type SectionOrder = (typeof SECTION_ORDERS)[number];
+
+const BOLD_VARIANT: Record<ResumeFont, string> = {
+  Helvetica: "Helvetica-Bold",
+  "Times-Roman": "Times-Bold",
+  Courier: "Courier-Bold",
+};
+
+function buildStyles(template: ResumeTemplate, font: ResumeFont) {
   const compact = template === "compact";
+  const bold = BOLD_VARIANT[font];
   return StyleSheet.create({
     page: {
-      fontFamily: "Helvetica",
+      fontFamily: font,
       fontSize: compact ? 9.5 : 10.5,
       lineHeight: compact ? 1.25 : 1.35,
       padding: compact ? 28 : 36,
       color: "#111111",
     },
-    name: { fontSize: compact ? 16 : 18, fontFamily: "Helvetica-Bold", marginBottom: 2 },
+    name: { fontSize: compact ? 16 : 18, fontFamily: bold, marginBottom: 2 },
     contactLine: { fontSize: compact ? 8.5 : 9.5, color: "#333333", marginBottom: compact ? 7 : 10 },
     sectionHeading: {
       fontSize: compact ? 10 : 11,
-      fontFamily: "Helvetica-Bold",
+      fontFamily: bold,
       textTransform: "uppercase" as const,
       borderBottom: "1 solid #111111",
       marginTop: compact ? 8 : 12,
@@ -31,7 +46,7 @@ function buildStyles(template: ResumeTemplate) {
       paddingBottom: 2,
     },
     paragraph: { marginBottom: compact ? 3 : 4 },
-    entryHeader: { fontFamily: "Helvetica-Bold", fontSize: compact ? 9.5 : 10.5 },
+    entryHeader: { fontFamily: bold, fontSize: compact ? 9.5 : 10.5 },
     entrySubheader: { fontSize: compact ? 8.5 : 9.5, color: "#333333", marginBottom: compact ? 2 : 3 },
     bullet: { marginBottom: compact ? 1 : 2, paddingLeft: 10 },
     entryBlock: { marginBottom: compact ? 5 : 8 },
@@ -48,6 +63,8 @@ export interface ResumePdfProps {
   certificationDetails?: CertificationEntry[];
   projects?: ProjectEntry[];
   template?: ResumeTemplate;
+  font?: ResumeFont;
+  sectionOrder?: SectionOrder;
 }
 
 /** "CSM — Scrum Alliance (May 2024 – May 2026)" from a structured cert. */
@@ -70,11 +87,15 @@ export function ResumeDocument({
   certificationDetails,
   projects,
   template,
+  font,
+  sectionOrder,
 }: ResumePdfProps) {
   const certs = certificationDetails?.filter((c) => c.name.trim()).length
     ? certificationDetails.filter((c) => c.name.trim()).map(certLine)
     : certifications;
-  const styles = buildStyles(template === "compact" ? "compact" : "classic");
+  const chosenFont: ResumeFont = RESUME_FONTS.includes(font as ResumeFont) ? (font as ResumeFont) : "Helvetica";
+  const styles = buildStyles(template === "compact" ? "compact" : "classic", chosenFont);
+  const skillsFirst = sectionOrder === "skills-first";
   const contactParts = [
     contact.email,
     contact.phone,
@@ -102,6 +123,19 @@ export function ResumeDocument({
           <View>
             <Text style={styles.sectionHeading}>Skills</Text>
             <Text style={styles.paragraph}>{skills.join(" | ")}</Text>
+          </View>
+        ) : null}
+
+        {/* Skills-first (functional) order surfaces certifications before the
+            work history; chronological keeps them at the end. */}
+        {skillsFirst && certs.length ? (
+          <View>
+            <Text style={styles.sectionHeading}>Certifications</Text>
+            {certs.map((line, i) => (
+              <Text key={i} style={styles.bullet}>
+                • {line}
+              </Text>
+            ))}
           </View>
         ) : null}
 
@@ -161,7 +195,7 @@ export function ResumeDocument({
           </View>
         ) : null}
 
-        {certs.length ? (
+        {!skillsFirst && certs.length ? (
           <View>
             <Text style={styles.sectionHeading}>Certifications</Text>
             {certs.map((line, i) => (

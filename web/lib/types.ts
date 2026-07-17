@@ -123,6 +123,13 @@ export interface TailoredApplication {
   comp?: string;
   interviewPrep?: InterviewPrep[];
   outreachMessages?: OutreachMessages;
+  /** Item 31: which resume/variant was actually sent to the extension. */
+  sentResume?: string;
+  /** Item 44: every status change with its timestamp. */
+  statusHistory?: { status: ApplicationStatus; at: string }[];
+  /** Item 46: hidden from the default tracker view without deleting. */
+  archived?: boolean;
+  updatedAt?: string;
 }
 
 export interface TailoredVariant {

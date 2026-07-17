@@ -10,6 +10,9 @@ export async function POST(request: NextRequest) {
       job: JobPosting;
       anthropicKey?: string;
       model?: string;
+      industry?: string;
+      coverLetterTone?: string;
+      coverLetterLength?: "short" | "medium" | "long";
     };
 
     if (!body.profile || !body.job) {
@@ -24,7 +27,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await tailor(body.profile, body.job, apiKey, body.model);
+    const result = await tailor(body.profile, body.job, apiKey, body.model, {
+      industry: typeof body.industry === "string" ? body.industry.slice(0, 60) : undefined,
+      coverLetterTone: typeof body.coverLetterTone === "string" ? body.coverLetterTone.slice(0, 60) : undefined,
+      coverLetterLength: body.coverLetterLength,
+    });
 
     // Score the tailored result
     const atsBreakdown = scoreResume(
