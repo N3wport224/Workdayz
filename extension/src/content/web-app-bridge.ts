@@ -46,10 +46,24 @@ async function handle(data: { type?: string; payload?: unknown }) {
       break;
     }
     case MESSAGE_TYPES.profile: {
-      await chrome.runtime.sendMessage({
+      const response = await chrome.runtime.sendMessage({
         type: "STORE_PROFILE",
         payload: data.payload as BaseProfile,
       });
+      // Item 76: tell the page what its save replaced (last-write-wins made visible)
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.profileStored, payload: { previousSyncedAt: response?.previousSyncedAt ?? null } },
+        window.location.origin,
+      );
+      break;
+    }
+    case MESSAGE_TYPES.requestSyncStatus: {
+      // Items 74/77: report what the extension holds right now.
+      const status = await chrome.runtime.sendMessage({ type: "GET_SYNC_STATUS" });
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.syncStatus, payload: status ?? null },
+        window.location.origin,
+      );
       break;
     }
     case MESSAGE_TYPES.requestScrapedJob: {
@@ -63,6 +77,25 @@ async function handle(data: { type?: string; payload?: unknown }) {
       break;
     }
   }
+}
+
+// Item 78: the background relays "a fill just finished on a Workday tab" —
+// forward it to the page so the web app can toast it live.
+try {
+  chrome.runtime.onMessage.addListener((message: { type?: string; count?: number; stillRequired?: number }) => {
+    if (message?.type === "FILL_COMPLETED_RELAY") {
+      window.postMessage(
+        {
+          source: "workdayz-extension",
+          type: MESSAGE_TYPES.fillCompleted,
+          payload: { count: message.count ?? 0, stillRequired: message.stillRequired ?? 0 },
+        },
+        window.location.origin,
+      );
+    }
+  });
+} catch {
+  /* orphaned script */
 }
 
 announceReady();

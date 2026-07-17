@@ -12,8 +12,7 @@ import {
   createNamedProfile,
   deleteNamedProfile,
 } from "@/lib/storage";
-import { sendProfile } from "@/lib/extension-bridge";
-import { getBridgeStatus } from "@/lib/extension-bridge";
+import { sendProfile, getBridgeStatus, requestSyncStatus, onSyncStatus, onProfileStored } from "@/lib/extension-bridge";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
 import type { ResumeProfile } from "@/lib/types";
 
@@ -41,11 +40,33 @@ export default function ProfilePage() {
   const [profileNames, setProfileNames] = useState<string[]>(["Default"]);
   const [activeName, setActiveName] = useState("Default");
 
+  // Item 74: what the extension holds and when it was last synced
+  const [extSyncNote, setExtSyncNote] = useState("");
+
   useEffect(() => {
     const p = loadProfile();
     if (p) setProfile(p);
     setProfileNames(listProfileNames());
     setActiveName(getActiveProfileName());
+    const offStatus = onSyncStatus((s) => {
+      if (!s?.syncedAt) setExtSyncNote("Extension detected — profile not synced yet (click Save).");
+      else {
+        const mins = Math.round((Date.now() - new Date(s.syncedAt).getTime()) / 60_000);
+        setExtSyncNote(`Extension synced ${mins <= 1 ? "just now" : `${mins}m ago`}.`);
+      }
+    });
+    // Item 76: make last-write-wins visible instead of silent.
+    const offStored = onProfileStored((previousSyncedAt) => {
+      const replaced = previousSyncedAt
+        ? ` (replaced the copy synced ${new Date(previousSyncedAt).toLocaleTimeString()})`
+        : "";
+      setExtSyncNote(`Extension synced just now${replaced}.`);
+    });
+    setTimeout(requestSyncStatus, 800); // give the bridge a beat to attach
+    return () => {
+      offStatus();
+      offStored();
+    };
   }, []);
 
   const updateContact = (field: string, value: string) => {
@@ -263,6 +284,7 @@ export default function ProfilePage() {
         <span className="text-xs text-gray-500">
           Keep separate resumes (e.g. &ldquo;Warehouse&rdquo; vs &ldquo;Office&rdquo;) — the active one feeds tailoring &amp; autofill.
         </span>
+        {extSyncNote && <span className="text-xs text-blue-400 ml-auto">🔌 {extSyncNote}</span>}
       </div>
 
       {/* The whole journey at a glance */}

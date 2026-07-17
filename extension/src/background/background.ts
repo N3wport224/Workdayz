@@ -66,10 +66,26 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       return { pkg: (data[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined) ?? null };
     }
     case "STORE_PROFILE": {
+      // Item 76: report what this sync replaced so the web app can surface
+      // last-write-wins instead of silently swallowing a conflicting save.
+      const existing = await chrome.storage.local.get(STORAGE_KEYS.baseProfile);
+      const previousSyncedAt = (existing[STORAGE_KEYS.baseProfile] as BaseProfile | undefined)?.syncedAt ?? null;
       await chrome.storage.local.set({
         [STORAGE_KEYS.baseProfile]: { ...message.payload, syncedAt: new Date().toISOString() },
       });
-      return { ok: true };
+      return { ok: true, previousSyncedAt };
+    }
+    case "GET_SYNC_STATUS": {
+      // Items 74/77: what the extension currently holds, for the web app.
+      const data = await chrome.storage.local.get([STORAGE_KEYS.baseProfile, STORAGE_KEYS.autofillPackage]);
+      const profile = data[STORAGE_KEYS.baseProfile] as BaseProfile | undefined;
+      const pkg = data[STORAGE_KEYS.autofillPackage] as AutofillPackage | undefined;
+      return {
+        syncedAt: profile?.syncedAt ?? null,
+        package: pkg
+          ? { title: pkg.job.title, company: pkg.job.company, source: pkg.resumeSource?.label ?? "Tailored resume", createdAt: pkg.createdAt }
+          : null,
+      };
     }
     case "SET_BADGE": {
       // Per-tab fill-count badge; clears itself when the tab navigates.
@@ -79,6 +95,23 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
         const color = (message.stillRequired ?? 0) > 0 ? "#dc2626" : "#059669";
         await chrome.action.setBadgeBackgroundColor({ color, tabId });
         await chrome.action.setBadgeText({ text: message.count > 0 ? String(message.count) : "", tabId });
+      }
+      // Item 78: let any open web-app tab know a fill just finished.
+      try {
+        const stored = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);
+        const origin = stored[STORAGE_KEYS.webAppOrigin] as string | undefined;
+        if (origin) {
+          const tabs = await chrome.tabs.query({ url: `${origin.replace(/\/$/, "")}/*` });
+          for (const tab of tabs) {
+            if (tab.id !== undefined) {
+              chrome.tabs
+                .sendMessage(tab.id, { type: "FILL_COMPLETED_RELAY", count: message.count, stillRequired: message.stillRequired ?? 0 })
+                .catch(() => {});
+            }
+          }
+        }
+      } catch {
+        /* best-effort notification */
       }
       return { ok: true };
     }

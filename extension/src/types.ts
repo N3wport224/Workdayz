@@ -161,6 +161,13 @@ export const MESSAGE_TYPES = {
   packageStored: "WORKDAYZ_PACKAGE_STORED",
   profile: "WORKDAYZ_PROFILE",
   ping: "WORKDAYZ_PING",
+  /** Items 74/77: web app asks what the extension currently holds. */
+  requestSyncStatus: "WORKDAYZ_REQUEST_SYNC_STATUS",
+  syncStatus: "WORKDAYZ_SYNC_STATUS",
+  /** Item 76: profile-store confirmation incl. what it replaced. */
+  profileStored: "WORKDAYZ_PROFILE_STORED",
+  /** Item 78: a fill finished on a Workday tab. */
+  fillCompleted: "WORKDAYZ_FILL_COMPLETED",
 } as const;
 
 // chrome.runtime message protocol between content scripts, popup, and background
@@ -175,7 +182,9 @@ export type RuntimeMessage =
   | { type: "ANSWER_QUESTIONS"; questions: string[] }
   | { type: "STORE_PROFILE"; payload: BaseProfile }
   | { type: "GET_PROFILE" }
-  | { type: "SET_BADGE"; count: number; stillRequired?: number };
+  | { type: "SET_BADGE"; count: number; stillRequired?: number }
+  | { type: "GET_SYNC_STATUS" }
+  | { type: "FILL_COMPLETED_RELAY"; count: number; stillRequired: number };
 
 export interface QuestionAnswer {
   question: string;

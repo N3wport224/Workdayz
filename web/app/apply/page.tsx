@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { loadProfile, loadSettings, saveApplication, loadApplications } from "@/lib/storage";
-import { sendAutofillPackage, getBridgeStatus } from "@/lib/extension-bridge";
+import { sendAutofillPackage, getBridgeStatus, requestSyncStatus, onSyncStatus, onFillCompleted, type ExtensionSyncStatus } from "@/lib/extension-bridge";
 import { segmentByKeywords } from "@/lib/highlight-keywords";
 import { scoreResume, sectionReadiness, suggestImprovements, thinSections } from "@/lib/ats-score";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
@@ -75,6 +75,8 @@ export default function ApplyPage() {
   const [templates, setTemplates] = useState<ResumeTemplateEntry[]>([]);
   // Item 63: optional extra attachment (writing sample, portfolio…)
   const [extraFile, setExtraFile] = useState<{ name: string; base64: string } | null>(null);
+  // Item 77: what package the extension currently holds
+  const [extHolds, setExtHolds] = useState<ExtensionSyncStatus | null>(null);
 
 
   useEffect(() => {
@@ -109,6 +111,20 @@ export default function ApplyPage() {
       .then((r) => r.json())
       .then((data) => setHasServerKey(Boolean(data.apiKeyConfigured)))
       .catch(() => setHasServerKey(true)); // don't block tailoring on a health-check network blip
+    // Items 77/78: show what the extension holds + toast completed fills.
+    const offSync = onSyncStatus(setExtHolds);
+    const offFill = onFillCompleted(({ count, stillRequired }) => {
+      setStatusMessage(
+        `🎉 Extension finished an autofill on a Workday tab: ${count} field group(s) filled${
+          stillRequired > 0 ? `, ${stillRequired} required field(s) still need you` : ""
+        }.`,
+      );
+    });
+    setTimeout(requestSyncStatus, 800);
+    return () => {
+      offSync();
+      offFill();
+    };
   }, []);
 
   const fetchJobUrl = async () => {
@@ -311,6 +327,7 @@ export default function ApplyPage() {
       if (app) saveApplication({ ...app, sentResume: chosen.label, updatedAt: new Date().toISOString() });
     }
     setStatusMessage(`✅ Sent to extension using ${chosen.label}. Open the Workday application form and click Autofill.`);
+    setTimeout(requestSyncStatus, 500); // refresh the "extension holds" line
   };
 
   /** Item 30: tailor several postings back-to-back from their URLs. */
@@ -869,6 +886,12 @@ export default function ApplyPage() {
               <span className="px-2 py-0.5 rounded-full text-xs bg-blue-900/40 text-blue-300 border border-blue-700/40">
                 Using: {resolveResumeChoice()?.label ?? "—"}
               </span>
+              {/* Item 77: what's loaded in the extension right now */}
+              {extHolds?.package && (
+                <span className="text-xs text-gray-500" title={`Sent ${new Date(extHolds.package.createdAt).toLocaleString()}`}>
+                  Extension holds: {extHolds.package.title} @ {extHolds.package.company} ({extHolds.package.source})
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-3">
               <button

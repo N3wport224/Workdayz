@@ -13,7 +13,17 @@ const MESSAGE_TYPES = {
   packageStored: "WORKDAYZ_PACKAGE_STORED",
   profile: "WORKDAYZ_PROFILE",
   ping: "WORKDAYZ_PING",
+  requestSyncStatus: "WORKDAYZ_REQUEST_SYNC_STATUS",
+  syncStatus: "WORKDAYZ_SYNC_STATUS",
+  profileStored: "WORKDAYZ_PROFILE_STORED",
+  fillCompleted: "WORKDAYZ_FILL_COMPLETED",
 } as const;
+
+/** Items 74/77: what the extension currently holds. */
+export interface ExtensionSyncStatus {
+  syncedAt: string | null;
+  package: { title: string; company: string; source: string; createdAt: string } | null;
+}
 
 export type BridgeStatus = "detected" | "not-detected" | "checking";
 
@@ -54,8 +64,51 @@ if (typeof window !== "undefined") {
       case MESSAGE_TYPES.scrapedJob:
         // The extension sent a scraped job posting
         break;
+      case MESSAGE_TYPES.syncStatus:
+        _syncStatusListeners.forEach((cb) => cb(data.payload as ExtensionSyncStatus | null));
+        break;
+      case MESSAGE_TYPES.profileStored:
+        _profileStoredListeners.forEach((cb) => cb((data.payload as { previousSyncedAt: string | null })?.previousSyncedAt ?? null));
+        break;
+      case MESSAGE_TYPES.fillCompleted:
+        _fillCompletedListeners.forEach((cb) => cb(data.payload as { count: number; stillRequired: number }));
+        break;
     }
   });
+}
+
+// --- Batch H listeners -------------------------------------------------------
+let _syncStatusListeners: Array<(s: ExtensionSyncStatus | null) => void> = [];
+let _profileStoredListeners: Array<(previousSyncedAt: string | null) => void> = [];
+let _fillCompletedListeners: Array<(r: { count: number; stillRequired: number }) => void> = [];
+
+/** Items 74/77: ask the extension what it currently holds; the answer arrives
+ * via onSyncStatus. */
+export function requestSyncStatus(): void {
+  window.postMessage({ source: "workdayz-web", type: MESSAGE_TYPES.requestSyncStatus }, window.location.origin);
+}
+
+export function onSyncStatus(cb: (s: ExtensionSyncStatus | null) => void): () => void {
+  _syncStatusListeners.push(cb);
+  return () => {
+    _syncStatusListeners = _syncStatusListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Item 76: fired after a profile sync, with the timestamp it replaced. */
+export function onProfileStored(cb: (previousSyncedAt: string | null) => void): () => void {
+  _profileStoredListeners.push(cb);
+  return () => {
+    _profileStoredListeners = _profileStoredListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Item 78: fired when the extension finishes a fill on a Workday tab. */
+export function onFillCompleted(cb: (r: { count: number; stillRequired: number }) => void): () => void {
+  _fillCompletedListeners.push(cb);
+  return () => {
+    _fillCompletedListeners = _fillCompletedListeners.filter((l) => l !== cb);
+  };
 }
 
 /** Ping the extension to check if it's loaded. */
@@ -95,7 +148,17 @@ export function requestScrapedJob(): void {
   );
 }
 
-// Auto-ping on load
+// Auto-ping on load, with retries (item 75): the bridge content script can
+// register a beat after the page loads, so a single early ping false-negatives.
 if (typeof window !== "undefined") {
   setTimeout(pingExtension, 300);
+  let attempts = 0;
+  const retry = setInterval(() => {
+    attempts += 1;
+    if (_status === "detected" || attempts >= 4) {
+      clearInterval(retry);
+      return;
+    }
+    pingExtension();
+  }, 1500);
 }
