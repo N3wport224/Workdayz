@@ -73,6 +73,19 @@ export default function ApplyPage() {
     if (params.get("from") === "extension") {
       setStatusMessage("Job posting scraped from the extension — fill in the details below.");
     }
+    // Item 53: "Reapply" from the tracker pre-fills the job from that record.
+    const reapplyId = params.get("reapply");
+    if (reapplyId) {
+      const past = loadApplications().find((a) => a.id === reapplyId);
+      if (past) {
+        setJobTitle(past.job.title);
+        setJobCompany(past.job.company);
+        setJobLocation(past.job.location);
+        setJobDescription(past.job.description);
+        setJobUrl(past.job.sourceUrl ?? "");
+        setStatusMessage(`Re-applying to "${past.job.title}" at ${past.job.company} — review the details and tailor again.`);
+      }
+    }
     // A key/model chosen in Settings (browser-only) is sent per-request; an
     // empty model falls through to the server's ANTHROPIC_MODEL/default.
     const settings = loadSettings();
