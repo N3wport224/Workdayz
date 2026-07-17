@@ -13,6 +13,11 @@ export interface ExtensionSettings {
   anthropicKey: string;
   model: string;
   autoSyncExtension: boolean;
+  /** Item 85: false = keep the API key in sessionStorage only (gone when the
+   * browser closes) instead of persisting it in localStorage. */
+  persistKey?: boolean;
+  /** Item 79: when the key was last changed, for rotation reminders. */
+  keySavedAt?: string;
 }
 
 const DEFAULT_SETTINGS: ExtensionSettings = {
@@ -21,7 +26,10 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   // when the user actually picks one in Settings.
   model: "",
   autoSyncExtension: true,
+  persistKey: true,
 };
+
+const SESSION_KEY_NAME = "workdayz-session-key";
 
 // Profile
 export function saveProfile(profile: ResumeProfile): void {
@@ -183,8 +191,20 @@ export function deleteApplication(id: string): TailoredApplication[] {
 export function saveSettings(settings: Partial<ExtensionSettings>): ExtensionSettings {
   const current = loadSettings();
   const updated = { ...current, ...settings };
+  // Item 79: stamp when the key changes, for rotation reminders.
+  if (settings.anthropicKey !== undefined && settings.anthropicKey !== current.anthropicKey) {
+    updated.keySavedAt = new Date().toISOString();
+  }
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    if (updated.persistKey === false) {
+      // Item 85: session-only key — never written to localStorage; it lives in
+      // sessionStorage and disappears when the browser closes.
+      sessionStorage.setItem(SESSION_KEY_NAME, updated.anthropicKey);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...updated, anthropicKey: "" }));
+    } else {
+      sessionStorage.removeItem(SESSION_KEY_NAME);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
+    }
   } catch (e) {
     console.error("Failed to save settings:", e);
   }
@@ -194,7 +214,12 @@ export function saveSettings(settings: Partial<ExtensionSettings>): ExtensionSet
 export function loadSettings(): ExtensionSettings {
   try {
     const data = localStorage.getItem(SETTINGS_KEY);
-    return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : { ...DEFAULT_SETTINGS };
+    const settings: ExtensionSettings = data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : { ...DEFAULT_SETTINGS };
+    // Item 85: merge the session-only key back in for this browser session.
+    if (settings.persistKey === false && !settings.anthropicKey) {
+      settings.anthropicKey = sessionStorage.getItem(SESSION_KEY_NAME) ?? "";
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

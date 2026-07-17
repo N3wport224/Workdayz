@@ -561,8 +561,16 @@ export async function runAutofill(
     }
   }
 
+  // Item 82: never quietly upload documents over plain HTTP (localhost is the
+  // test harness). Real Workday tenants are always HTTPS, so this only fires
+  // on something suspicious.
+  const insecure = location.protocol === "http:" && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  if (insecure && (pkg.resumePdfBase64 || pkg.coverLetterPdfBase64 || pkg.extraFile?.base64)) {
+    summary.mismatches.push("This page is NOT using HTTPS — documents were not attached. Check the address bar.");
+  }
+
   // A base-profile fill source has no generated PDFs — never attach empty files.
-  const resumeInput = pkg.resumePdfBase64
+  const resumeInput = !insecure && pkg.resumePdfBase64
     ? findFileInputBySynonyms(["resume", "cv", "upload resume"], { allowSoleFallback: true })
     : null;
   if (resumeInput) {
@@ -570,7 +578,7 @@ export async function runAutofill(
     summary.filesAttached.push("resume");
   }
 
-  const coverLetterInput = pkg.coverLetterPdfBase64
+  const coverLetterInput = !insecure && pkg.coverLetterPdfBase64
     ? findFileInputBySynonyms(["cover letter", "upload cover letter"])
     : null;
   if (coverLetterInput && coverLetterInput !== resumeInput) {
@@ -580,7 +588,7 @@ export async function runAutofill(
 
   // Item 63: extra document (writing sample, portfolio…) — only into inputs
   // that aren't the resume/cover-letter ones.
-  if (pkg.extraFile?.base64) {
+  if (!insecure && pkg.extraFile?.base64) {
     const extraInput = findFileInputBySynonyms([
       "writing sample", "portfolio", "work sample", "additional document", "other document", "supporting document",
     ]);

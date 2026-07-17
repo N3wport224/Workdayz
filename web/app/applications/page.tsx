@@ -292,6 +292,28 @@ export default function ApplicationsPage() {
                 <a href={`/apply?reapply=${app.id}`} className="text-xs px-2 py-1 rounded border border-gray-700 text-blue-400 hover:border-blue-500">
                   Reapply →
                 </a>
+                {/* Item 81: strip the heavy/private payload but keep the row */}
+                <button
+                  onClick={() => {
+                    if (!confirm("Purge this application's stored details (resume snapshot, cover letter, job description)? The tracker row and status stay.")) return;
+                    persist({
+                      ...app,
+                      profile: { ...app.profile, summary: "", skills: [], experience: [], education: [], projects: [], certifications: [] },
+                      coverLetter: "",
+                      tailoredBullets: [],
+                      variants: [],
+                      interviewPrep: undefined,
+                      outreachMessages: undefined,
+                      job: { ...app.job, description: "(purged)" },
+                      notes: app.notes,
+                      updatedAt: new Date().toISOString(),
+                    });
+                  }}
+                  className="text-xs px-2 py-1 rounded border border-gray-700 text-amber-500 hover:border-amber-500"
+                  title="Remove the stored resume/cover-letter/job text for this application but keep the tracker row."
+                >
+                  Purge details
+                </button>
                 <button onClick={() => handleDelete(app.id)} className="text-xs px-2 py-1 rounded border border-gray-700 text-red-500 hover:border-red-500">
                   Delete
                 </button>

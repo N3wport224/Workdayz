@@ -47,6 +47,8 @@ jobs:
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - run: npm ci
+      - name: Scope audit (extension must stay on *.myworkdayjobs.com only)
+        run: node scripts/check-scope.mjs
       - run: npx tsc --noEmit
       - run: npm run build
       - name: Install Chromium for DOM tests

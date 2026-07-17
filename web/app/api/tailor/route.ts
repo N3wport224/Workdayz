@@ -3,8 +3,30 @@ import { tailor } from "@/lib/tailor";
 import { scoreResume } from "@/lib/ats-score";
 import type { ResumeProfile, JobPosting } from "@/lib/types";
 
+// Item 84: cost guard — a runaway client loop (bug, stuck retry, batch gone
+// wrong) can't silently burn API credits. Sliding one-minute window,
+// in-memory per server process; generous enough for real use (batch mode
+// tops out at 10 sequential calls).
+const WINDOW_MS = 60_000;
+const MAX_CALLS_PER_WINDOW = 12;
+let callTimes: number[] = [];
+
+function rateLimited(): boolean {
+  const now = Date.now();
+  callTimes = callTimes.filter((t) => now - t < WINDOW_MS);
+  if (callTimes.length >= MAX_CALLS_PER_WINDOW) return true;
+  callTimes.push(now);
+  return false;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    if (rateLimited()) {
+      return NextResponse.json(
+        { error: `Rate limit: more than ${MAX_CALLS_PER_WINDOW} tailoring calls in a minute — pausing to protect your API credits. Wait a moment and retry.` },
+        { status: 429 },
+      );
+    }
     const body = await request.json() as {
       profile: ResumeProfile;
       job: JobPosting;

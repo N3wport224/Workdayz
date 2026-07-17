@@ -54,8 +54,16 @@ export default function SettingsPage() {
     }
   };
 
+  const [keyStale, setKeyStale] = useState(false);
+
   useEffect(() => {
-    setSettings(loadSettings());
+    const loaded = loadSettings();
+    setSettings(loaded);
+    // Item 79: rotation reminder, computed once on mount (render must stay pure).
+    setKeyStale(
+      Boolean(loaded.anthropicKey && loaded.keySavedAt) &&
+        Date.now() - new Date(loaded.keySavedAt!).getTime() > 90 * 86_400_000,
+    );
   }, []);
 
   const save = () => {
@@ -106,6 +114,33 @@ export default function SettingsPage() {
           onChange={(e) => setSettings({ ...settings, anthropicKey: e.target.value })}
           placeholder="sk-ant-..."
         />
+        <label className="flex items-center gap-2 mt-3 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={settings.persistKey !== false}
+            onChange={(e) => setSettings({ ...settings, persistKey: e.target.checked })}
+            className="w-4 h-4"
+          />
+          Remember this key in the browser
+          <span className="text-xs text-gray-500">(unchecked = kept only until the browser closes)</span>
+        </label>
+        {/* Item 79: rotation reminder */}
+        {keyStale && (
+          <p className="mt-2 text-sm text-amber-400">
+            ⚠ This key was saved over 90 days ago — consider rotating it at console.anthropic.com.
+          </p>
+        )}
+      </div>
+
+      {/* Item 80: plain-language privacy statement */}
+      <div className="card">
+        <h2 className="font-semibold mb-2">🔒 Where your data goes</h2>
+        <ul className="text-sm text-gray-400 space-y-1 list-disc list-inside">
+          <li>Your resume, applications, and settings live in <span className="text-gray-300">this browser&apos;s storage</span> — there is no Workdayz server or account.</li>
+          <li>Resume + job text is sent to <span className="text-gray-300">Anthropic&apos;s API</span> only when you click Tailor/Import/Draft, using your own key.</li>
+          <li>The extension fills forms on <span className="text-gray-300">*.myworkdayjobs.com</span> only, and never submits an application for you.</li>
+          <li>Nothing else leaves your machine. Wipe everything anytime below.</li>
+        </ul>
       </div>
 
       {/* Model */}
