@@ -58,11 +58,15 @@ export default function SettingsPage() {
   const [keyStale, setKeyStale] = useState(false);
   // Item 96: local API-spend estimate
   const [costs, setCosts] = useState<CostSummary | null>(null);
+  // window.location.origin differs between the server-rendered placeholder
+  // and the client, so it's read post-mount to avoid a hydration mismatch.
+  const [webAppOrigin, setWebAppOrigin] = useState("http://localhost:3000");
 
   useEffect(() => {
     const loaded = loadSettings();
     setSettings(loaded);
     setCosts(summarizeCosts());
+    setWebAppOrigin(window.location.origin);
     // Item 79: rotation reminder, computed once on mount (render must stay pure).
     setKeyStale(
       Boolean(loaded.anthropicKey && loaded.keySavedAt) &&
@@ -265,7 +269,7 @@ export default function SettingsPage() {
         </p>
         <div className="mt-3 p-3 bg-gray-800 rounded-lg text-sm">
           <span className="text-gray-400">Web app origin:</span>
-          <span className="ml-2 text-blue-400">{typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}</span>
+          <span className="ml-2 text-blue-400">{webAppOrigin}</span>
         </div>
       </div>
 

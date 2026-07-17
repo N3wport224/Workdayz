@@ -32,6 +32,14 @@ jobs:
         run: npm run test:ui
         env:
           ANTHROPIC_API_KEY: ci-placeholder
+      - name: Journey e2e (home/profile/settings/tracker)
+        run: npm run test:journey
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
+      - name: Toolkit e2e (exports + interview prep/outreach/questions, mocked LLM)
+        run: npm run test:toolkit
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
       - name: Accessibility audit (fails on critical violations)
         run: npm run test:a11y
         env:
@@ -59,3 +67,5 @@ jobs:
         run: npx playwright-core install chromium --with-deps
       - name: DOM heuristics e2e
         run: npm test
+      - name: Popup UI e2e (tabs, toggles, theme, storage)
+        run: npm run test:popup

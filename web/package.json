@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:ui": "node test/ui-verify.mjs",
+    "test:journey": "node test/journey-verify.mjs",
+    "test:toolkit": "node test/toolkit-verify.mjs",
     "test:a11y": "node test/a11y-verify.mjs"
   },
   "dependencies": {
