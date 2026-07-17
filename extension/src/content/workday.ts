@@ -3,7 +3,7 @@ import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm } from "./autofill";
 import { undoFill, fieldLabelText, setFieldValue, findFillableFields, type FillableElement } from "./dom-utils";
 import { addButton, mountWidget } from "./widget";
-import { getSettings } from "./features";
+import { getSettings, diffFormVsProfile, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText } from "./features";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -274,7 +274,7 @@ async function runAutofillNow(widget: import("./widget").Widget) {
   // Item 58: remember this tenant's form shape for drift detection next time.
   void storeTenantFingerprint();
   // Toolbar badge mirrors the fill count for at-a-glance confirmation.
-  sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
+  sendMessage({ type: "SET_BADGE", count: result.filled.length, stillRequired: result.stillRequired?.length ?? 0 }).catch(() => {});
   void recordFillForPage(result.filled.length);
   return result;
 }
@@ -455,6 +455,77 @@ function initApplicationFormWidget() {
       widget.setStatus("Couldn't access the clipboard — check the site's clipboard permission.");
     }
   });
+
+  // Items 67-70 live behind one expander so the widget stays uncluttered.
+  const moreBtn = addButton(widget.root, "🧰 More tools…", async () => {
+    moreBtn.remove();
+
+    // Item 67: form vs profile diff
+    addButton(widget.root, "Compare form vs profile", async () => {
+      const source = await getFillSource();
+      if (!source) {
+        widget.setStatus("Nothing to compare against — sync your profile first.");
+        return;
+      }
+      const diffs = diffFormVsProfile(source.pkg);
+      if (diffs.length === 0) {
+        widget.setStatus("No comparable contact fields found on this step.");
+        return;
+      }
+      widget.showExtendedInfo(
+        diffs
+          .map((d) => {
+            const icon = d.match ? "✓" : d.formValue ? "≠" : "∅";
+            const color = d.match ? "#34d399" : "#fbbf24";
+            return `<div class="result-detail"><span style="color:${color}">${icon}</span> ${d.field}: form "${d.formValue.slice(0, 20)}" / profile "${d.profileValue.slice(0, 20)}"</div>`;
+          })
+          .join(""),
+      );
+      widget.setStatus("Form vs profile comparison below (✓ match, ≠ differs, ∅ empty).");
+    });
+
+    // Item 68: quick manual fill from pasted "label = value" lines
+    addButton(widget.root, "Paste label=value fills", () => {
+      const text = window.prompt('Paste lines like "Desired salary = 85000" (one per line):');
+      if (!text?.trim()) return;
+      const result = importFieldValuesFromText(text);
+      widget.setStatus(
+        `Applied ${result.fieldsUpdated} value(s).${result.errors.length ? ` Not found: ${result.errors.slice(0, 2).join("; ")}` : ""}`,
+      );
+    });
+
+    // Item 69: this page's fill timeline
+    addButton(widget.root, "Fill history (this tab)", () => {
+      const history = getPageFillHistory();
+      if (history.length === 0) {
+        widget.setStatus("No fills recorded in this tab session yet.");
+        return;
+      }
+      widget.showExtendedInfo(
+        history
+          .slice(-12)
+          .reverse()
+          .map((h) => `<div class="result-detail">${new Date(h.timestamp).toLocaleTimeString()} ${h.success ? "✓" : "✗"} ${h.fieldLabel.slice(0, 34)}</div>`)
+          .join(""),
+      );
+      widget.setStatus(`Last ${Math.min(12, history.length)} fill event(s) in this tab.`);
+    });
+
+    // Item 70: one-click diagnostic bundle
+    addButton(widget.root, "Copy diagnostic report", async () => {
+      const source = await getFillSource();
+      if (!source) {
+        widget.setStatus("Nothing loaded to report on.");
+        return;
+      }
+      const ok = await copyReportToClipboard(source.pkg);
+      widget.setStatus(
+        ok
+          ? "Diagnostic report copied (package info, field count, validation, fill history — no resume content)."
+          : "Couldn't access the clipboard.",
+      );
+    });
+  });
 }
 
 function detectMode(): Mode {
@@ -508,7 +579,7 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResp
       // Same enhanced pipeline as the widget button; the result is a superset
       // of AutofillRunSummary so the popup's existing rendering keeps working.
       const result = await runEnhancedAutofill(source.pkg, await getCustomRules());
-      sendMessage({ type: "SET_BADGE", count: result.filled.length }).catch(() => {});
+      sendMessage({ type: "SET_BADGE", count: result.filled.length, stillRequired: result.stillRequired?.length ?? 0 }).catch(() => {});
       void recordFillForPage(result.filled.length);
       sendResponse(result);
     });

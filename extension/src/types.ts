@@ -175,7 +175,7 @@ export type RuntimeMessage =
   | { type: "ANSWER_QUESTIONS"; questions: string[] }
   | { type: "STORE_PROFILE"; payload: BaseProfile }
   | { type: "GET_PROFILE" }
-  | { type: "SET_BADGE"; count: number };
+  | { type: "SET_BADGE"; count: number; stillRequired?: number };
 
 export interface QuestionAnswer {
   question: string;

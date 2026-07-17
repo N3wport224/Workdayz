@@ -98,6 +98,13 @@ export function mountWidget(title: string): Widget {
       }
       .hidden { display: none; }
       .bubble.shown { display: block; }
+      /* Item 71: light theme, driven by the extension's theme setting */
+      .panel.light { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; }
+      .panel.light .status { opacity: 1; color: #475569; }
+      .panel.light .result-item { background: #f1f5f9; }
+      .panel.light .result-detail { color: #64748b; }
+      .panel.light .collapseBtn { color: #64748b; }
+      .panel.light .progress-bar { background: #e2e8f0; }
     </style>
     <div class="panel" id="panel">
       <div class="titleRow">
@@ -152,12 +159,15 @@ export function mountWidget(title: string): Widget {
   });
 
   try {
-    chrome.storage.local.get([COLLAPSED_KEY, POSITION_KEY]).then((data) => {
+    chrome.storage.local.get([COLLAPSED_KEY, POSITION_KEY, "workdayz.settings"]).then((data) => {
       if (data[COLLAPSED_KEY]) setCollapsed(true, false);
       if (data[POSITION_KEY] === "left") {
         position = "left";
         applyPosition("left");
       }
+      // Item 71: honor the theme setting in the on-page widget too.
+      const theme = (data["workdayz.settings"] as { theme?: string } | undefined)?.theme;
+      if (theme === "light") panel.classList.add("light");
     });
   } catch {
     /* orphaned script */

@@ -1,5 +1,5 @@
 import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
-import { getSettings, updateSettings, resetSettings, getUsageStats, saveTemplate, loadTemplates, deleteTemplate, type ExtensionSettings } from "../content/features";
+import { getSettings, updateSettings, resetSettings, getUsageStats, saveTemplate, loadTemplates, deleteTemplate, getShortcutInfo, type ExtensionSettings } from "../content/features";
 import { runAudit } from "../content/feature-audit";
 
 // Enhanced results (autofill-v2) are a superset of AutofillRunSummary.
@@ -456,6 +456,48 @@ async function initSettings() {
     timeoutInput.value = String(seconds);
     await updateSettings({ fillTimeoutMs: seconds * 1000 });
     showFeedback(settingsFeedback, `Fill timeout set to ${seconds}s.`, "success");
+  });
+
+  // Item 71: dark/light theme actually wired to settings.theme
+  const darkToggle = document.getElementById("setDarkTheme") as HTMLInputElement | null;
+  if (darkToggle) {
+    document.body.dataset.theme = settings.theme === "dark" ? "dark" : "light";
+    darkToggle.checked = settings.theme === "dark";
+    darkToggle.addEventListener("change", async () => {
+      const theme = darkToggle.checked ? "dark" : "light";
+      document.body.dataset.theme = theme;
+      await updateSettings({ theme });
+      showFeedback(settingsFeedback, `Theme: ${theme}.`, "success");
+    });
+  }
+
+  // Item 66: keyboard shortcut cheat sheet
+  const shortcutList = document.getElementById("shortcutList") as HTMLUListElement | null;
+  if (shortcutList) {
+    try {
+      const shortcuts = await getShortcutInfo();
+      shortcutList.innerHTML = shortcuts.length
+        ? shortcuts
+            .map((s) => `<li><strong>${escapeHtml(s.currentKey)}</strong> — ${escapeHtml(s.description || s.name)}</li>`)
+            .join("")
+        : `<li style="opacity:.6">No shortcuts registered.</li>`;
+    } catch {
+      shortcutList.innerHTML = `<li style="opacity:.6">Unavailable in this context.</li>`;
+    }
+  }
+
+  // Item 72: first-run onboarding
+  const onboardingCard = document.getElementById("onboardingCard");
+  const onboardingDone = document.getElementById("onboardingDone");
+  try {
+    const flag = await chrome.storage.local.get("workdayz.onboarded");
+    if (!flag["workdayz.onboarded"]) onboardingCard?.classList.remove("hidden");
+  } catch { /* orphaned */ }
+  onboardingDone?.addEventListener("click", async () => {
+    onboardingCard?.classList.add("hidden");
+    try {
+      await chrome.storage.local.set({ "workdayz.onboarded": true });
+    } catch { /* orphaned */ }
   });
 
   // Local-only usage stats (never leaves the browser)

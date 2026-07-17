@@ -73,9 +73,11 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
     }
     case "SET_BADGE": {
       // Per-tab fill-count badge; clears itself when the tab navigates.
+      // Item 73: red when required fields still need the user, green when done.
       const tabId = sender.tab?.id;
       if (typeof tabId === "number") {
-        await chrome.action.setBadgeBackgroundColor({ color: "#059669", tabId });
+        const color = (message.stillRequired ?? 0) > 0 ? "#dc2626" : "#059669";
+        await chrome.action.setBadgeBackgroundColor({ color, tabId });
         await chrome.action.setBadgeText({ text: message.count > 0 ? String(message.count) : "", tabId });
       }
       return { ok: true };

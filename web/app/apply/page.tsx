@@ -21,6 +21,25 @@ interface TailorResult {
   estimatedCost: number;
 }
 
+/** Item 32: named tailored-resume templates, persisted in localStorage. */
+interface ResumeTemplateEntry {
+  name: string;
+  summary: string;
+  skills: string[];
+  bullets: { id: string; original: string; tailored: string }[];
+  coverLetter: string;
+}
+
+const TEMPLATES_KEY = "workdayz-resume-templates";
+
+function loadTemplatesList(): ResumeTemplateEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "[]") as ResumeTemplateEntry[];
+  } catch {
+    return [];
+  }
+}
+
 export default function ApplyPage() {
   const [profile, setProfile] = useState<ResumeProfile | null>(null);
   const [jobUrl, setJobUrl] = useState("");
@@ -53,18 +72,10 @@ export default function ApplyPage() {
   const [batchLog, setBatchLog] = useState<string[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   // Item 32: saved tailored-resume templates
-  const [templates, setTemplates] = useState<{ name: string; summary: string; skills: string[]; bullets: { id: string; original: string; tailored: string }[]; coverLetter: string }[]>([]);
+  const [templates, setTemplates] = useState<ResumeTemplateEntry[]>([]);
   // Item 63: optional extra attachment (writing sample, portfolio…)
   const [extraFile, setExtraFile] = useState<{ name: string; base64: string } | null>(null);
 
-  const TEMPLATES_KEY = "workdayz-resume-templates";
-  const loadTemplatesList = () => {
-    try {
-      return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? "[]") as typeof templates;
-    } catch {
-      return [];
-    }
-  };
 
   useEffect(() => {
     const p = loadProfile();
@@ -93,7 +104,6 @@ export default function ApplyPage() {
     const settings = loadSettings();
     setApiKey(settings.anthropicKey);
     setModel(settings.model);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pure localStorage read, stable across renders
     setTemplates(loadTemplatesList());
     fetch("/api/health")
       .then((r) => r.json())

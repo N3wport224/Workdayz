@@ -597,7 +597,8 @@ const DEFAULT_SETTINGS: ExtensionSettings = {
   maxRetriesPerSection: 3,
   fillTimeoutMs: 30000,
   confirmBeforeOverwrite: false,
-  theme: "dark",
+  // Matches the popup's actual default appearance; "dark" is the override.
+  theme: "light",
 };
 
 export async function getSettings(): Promise<ExtensionSettings> {

@@ -17,6 +17,14 @@
         --text-secondary: #64748b;
         --radius: 8px;
       }
+      /* Item 71: dark theme via CSS-variable overrides */
+      body[data-theme="dark"] {
+        --bg: #0b1220;
+        --card: #111827;
+        --border: #1f2937;
+        --text: #f9fafb;
+        --text-secondary: #9ca3af;
+      }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
         width: 340px;
@@ -287,6 +295,16 @@
 
     <div class="content">
       <div class="tab-panel active" id="autofillPanel">
+      <!-- Item 72: first-run onboarding -->
+      <div class="card hidden" id="onboardingCard" style="border-color: #2563eb">
+        <div class="card-title">👋 Welcome to Workdayz</div>
+        <ol style="font-size: 12px; line-height: 1.6; padding-left: 16px">
+          <li><strong>Save your resume</strong> on the web app&apos;s Profile page (it syncs here automatically).</li>
+          <li><strong>Tailor a job</strong> on the Apply page and click &ldquo;Send to extension&rdquo;.</li>
+          <li>Open the Workday application and hit <strong>Autofill</strong> (or Alt+Shift+F). Review everything — nothing is ever submitted for you.</li>
+        </ol>
+        <button id="onboardingDone" class="btn btn-primary btn-sm" style="margin-top: 8px">Got it</button>
+      </div>
       <!-- Connection Status -->
       <div class="card">
         <div class="card-title">Connection</div>
@@ -415,12 +433,28 @@
           </div>
           <label class="switch"><input type="checkbox" id="setAutoFill" /><span class="slider"></span></label>
         </div>
+        <div class="toggle-row">
+          <div class="toggle-label">
+            <div class="name">Dark theme</div>
+            <div class="hint">Switch the popup between light and dark.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="setDarkTheme" /><span class="slider"></span></label>
+        </div>
         <div class="timeout-row">
           <label for="setTimeout" style="margin: 0">Fill timeout</label>
           <input id="setTimeout" type="number" min="5" max="120" step="5" />
           <span>seconds</span>
         </div>
         <div id="settingsFeedback" class="feedback hidden"></div>
+      </div>
+
+      <!-- Item 66: keyboard shortcuts -->
+      <div class="card">
+        <div class="card-title">Keyboard shortcuts</div>
+        <ul class="detail-list" id="shortcutList"><li style="opacity:.6">Loading…</li></ul>
+        <p style="font-size: 10.5px; color: var(--text-secondary); margin-top: 4px">
+          Remap at chrome://extensions/shortcuts
+        </p>
       </div>
 
       <!-- Web App Connection -->
