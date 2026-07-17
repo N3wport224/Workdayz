@@ -2,7 +2,7 @@ import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type CustomFillRu
 import { isJobPostingPage, scrapeJobPosting } from "./job-scraper";
 import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicationForm } from "./autofill";
 import { undoFill, fieldLabelText, setFieldValue, findFillableFields, type FillableElement } from "./dom-utils";
-import { addButton, mountWidget } from "./widget";
+import { addButton, mountWidget, escapeHtml } from "./widget";
 import { getSettings, diffFormVsProfile, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText } from "./features";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
@@ -477,7 +477,7 @@ function initApplicationFormWidget() {
           .map((d) => {
             const icon = d.match ? "✓" : d.formValue ? "≠" : "∅";
             const color = d.match ? "#34d399" : "#fbbf24";
-            return `<div class="result-detail"><span style="color:${color}">${icon}</span> ${d.field}: form "${d.formValue.slice(0, 20)}" / profile "${d.profileValue.slice(0, 20)}"</div>`;
+            return `<div class="result-detail"><span style="color:${color}">${icon}</span> ${escapeHtml(d.field)}: form "${escapeHtml(d.formValue.slice(0, 20))}" / profile "${escapeHtml(d.profileValue.slice(0, 20))}"</div>`;
           })
           .join(""),
       );
@@ -505,7 +505,7 @@ function initApplicationFormWidget() {
         history
           .slice(-12)
           .reverse()
-          .map((h) => `<div class="result-detail">${new Date(h.timestamp).toLocaleTimeString()} ${h.success ? "✓" : "✗"} ${h.fieldLabel.slice(0, 34)}</div>`)
+          .map((h) => `<div class="result-detail">${new Date(h.timestamp).toLocaleTimeString()} ${h.success ? "✓" : "✗"} ${escapeHtml(h.fieldLabel.slice(0, 34))}</div>`)
           .join(""),
       );
       widget.setStatus(`Last ${Math.min(12, history.length)} fill event(s) in this tab.`);

@@ -126,6 +126,35 @@ try {
   check("preview reports resume attach", preview.files.includes("resume"));
   check("preview writes nothing", (await page.$eval("#firstName", (el) => el.value)) === "");
 
+  // Security regression: a Workday tenant (any *.myworkdayjobs.com site,
+  // not just a trusted one) fully controls its own form field values. The
+  // "Compare form vs profile" / fill-history widgets used to interpolate
+  // that text into innerHTML unescaped — a crafted field value could run
+  // script in the content script's page context. Confirm escapeHtml()
+  // neutralizes it and that mounting the real widget with escaped output
+  // never creates a live element from the payload.
+  const xssResult = await page.evaluate((p) => {
+    const payload = '<img src=x onerror="window.__xssFired=true">';
+    document.getElementById("firstName").value = payload;
+    const diffs = window.WorkdayzTest.diffFormVsProfile(p);
+    const firstNameDiff = diffs.find((d) => d.field === "firstName");
+    // Not sliced to the real code's 20-char display limit: escaping, not
+    // truncation, is the actual control, so the proof must not lean on it.
+    const escaped = window.WorkdayzTest.escapeHtml(firstNameDiff.formValue);
+    const rawWidget = window.WorkdayzTest.mountWidget("XSS regression check (raw)");
+    rawWidget.showExtendedInfo(`<div class="result-detail">${firstNameDiff.formValue}</div>`);
+    const rawHasLiveImg = rawWidget.resultArea.querySelector("img") !== null;
+    const safeWidget = window.WorkdayzTest.mountWidget("XSS regression check (escaped)");
+    safeWidget.showExtendedInfo(`<div class="result-detail">${escaped}</div>`);
+    const safeHasLiveImg = safeWidget.resultArea.querySelector("img") !== null;
+    document.getElementById("firstName").value = "";
+    return { rawFormValue: firstNameDiff.formValue, escaped, rawHasLiveImg, safeHasLiveImg };
+  }, pkg);
+  check("diffFormVsProfile captures the raw (unsafe) form value", xssResult.rawFormValue.includes("<img"), xssResult.rawFormValue);
+  check("unescaped interpolation DOES create a live <img> (proves the threat is real)", xssResult.rawHasLiveImg);
+  check("escapeHtml neutralizes angle brackets", !xssResult.escaped.includes("<img"), xssResult.escaped);
+  check("escaped interpolation creates no live <img> element", !xssResult.safeHasLiveImg);
+
   const summary = await page.evaluate(
     async ({ p, rules }) => window.WorkdayzTest.runAutofill(p, rules),
     { p: pkg, rules: customRules },

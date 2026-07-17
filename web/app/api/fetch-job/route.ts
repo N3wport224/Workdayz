@@ -20,7 +20,11 @@ const ALLOWED_HOSTS = [
 ];
 
 function isAllowed(url: URL): boolean {
-  return ALLOWED_HOSTS.some((host) => url.hostname.endsWith(host));
+  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+  // Exact host or a real subdomain only — a bare .endsWith(host) check lets
+  // any domain that merely ends with the allowed string through, e.g.
+  // "evil-indeed.com" or "attackermyworkdayjobs.com".
+  return ALLOWED_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
 }
 
 export async function POST(request: NextRequest) {

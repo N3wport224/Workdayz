@@ -5,6 +5,16 @@
 const COLLAPSED_KEY = "workdayz.widgetCollapsed";
 const POSITION_KEY = "workdayz.widgetPosition"; // "right" (default) | "left"
 
+/** Every string rendered here can originate from the Workday tenant's own
+ * page (field labels, form values) — the extension is scoped to every
+ * *.myworkdayjobs.com tenant, not just a trusted one, so this content is
+ * untrusted. Escape before any innerHTML interpolation. */
+export function escapeHtml(s: string): string {
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 export interface Widget {
   root: HTMLElement;
   /** The result region inside the shadow DOM — for callers that need to
@@ -210,12 +220,12 @@ export function mountWidget(title: string): Widget {
 
     if (summary.stillRequired?.length) {
       html += `<div class="result-detail" style="color: #f87171;"><strong>Still need:</strong> `;
-      html += summary.stillRequired.slice(0, 4).map(s => s.slice(0, 40)).join(", ");
+      html += escapeHtml(summary.stillRequired.slice(0, 4).map(s => s.slice(0, 40)).join(", "));
       html += `</div>`;
     }
     if (summary.leftForYou?.length) {
       html += `<div class="result-detail"><strong>Your input:</strong> `;
-      html += summary.leftForYou.slice(0, 2).join(", ");
+      html += escapeHtml(summary.leftForYou.slice(0, 2).join(", "));
       if (summary.leftForYou.length > 2) html += ` +${summary.leftForYou.length - 2} more`;
       html += `</div>`;
     }
