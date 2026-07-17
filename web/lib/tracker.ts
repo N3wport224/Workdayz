@@ -146,6 +146,65 @@ export function weeklyVolume(apps: TailoredApplication[], weeks = 8, now = new D
   return counts;
 }
 
+// --- Item 97: recurring keyword gaps across applications ---------------------
+export function keywordGaps(apps: TailoredApplication[], limit = 6): { keyword: string; count: number; total: number }[] {
+  const recent = apps.slice(-20);
+  const counts = new Map<string, number>();
+  for (const app of recent) {
+    for (const kw of new Set(app.atsBreakdown.missing.map((k) => k.toLowerCase()))) {
+      counts.set(kw, (counts.get(kw) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([keyword, count]) => ({ keyword, count, total: recent.length }));
+}
+
+// --- Item 98: time-to-first-response vs your own average ---------------------
+const FIRST_RESPONSE: ApplicationStatus[] = ["screening", "interview", "offer", "accepted", "rejected"];
+
+export function responseTimesDays(apps: TailoredApplication[]): number[] {
+  const days: number[] = [];
+  for (const app of apps) {
+    const first = app.statusHistory?.find((h) => FIRST_RESPONSE.includes(h.status));
+    if (!first) continue;
+    const delta = (new Date(first.at).getTime() - new Date(app.createdAt).getTime()) / 86_400_000;
+    if (Number.isFinite(delta) && delta >= 0) days.push(Math.round(delta * 10) / 10);
+  }
+  return days.sort((a, b) => a - b);
+}
+
+export function medianResponseDays(apps: TailoredApplication[]): number | null {
+  const days = responseTimesDays(apps);
+  if (!days.length) return null;
+  const mid = Math.floor(days.length / 2);
+  return days.length % 2 ? days[mid] : Math.round(((days[mid - 1] + days[mid]) / 2) * 10) / 10;
+}
+
+// --- Item 99: bullets that show up in applications that got responses --------
+export function effectiveBullets(apps: TailoredApplication[], limit = 3): { bullet: string; responded: number; sent: number }[] {
+  const stats = new Map<string, { responded: number; sent: number }>();
+  for (const app of apps) {
+    if (app.status === "draft") continue;
+    const gotResponse = FIRST_RESPONSE.includes(app.status);
+    for (const b of app.tailoredBullets) {
+      const key = b.tailored.trim();
+      if (key.length < 20) continue;
+      const entry = stats.get(key) ?? { responded: 0, sent: 0 };
+      entry.sent += 1;
+      if (gotResponse) entry.responded += 1;
+      stats.set(key, entry);
+    }
+  }
+  return [...stats.entries()]
+    .filter(([, s]) => s.responded > 0 && s.sent >= 2)
+    .sort((a, b) => b[1].responded / b[1].sent - a[1].responded / a[1].sent || b[1].responded - a[1].responded)
+    .slice(0, limit)
+    .map(([bullet, s]) => ({ bullet, ...s }));
+}
+
 // --- Item 54: shareable markdown summary ------------------------------------
 export function trackerSummaryMarkdown(apps: TailoredApplication[]): string {
   const active = apps.filter((a) => !a.archived);

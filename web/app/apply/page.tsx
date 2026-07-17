@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { loadProfile, loadSettings, saveApplication, loadApplications } from "@/lib/storage";
 import { sendAutofillPackage, getBridgeStatus, requestSyncStatus, onSyncStatus, onFillCompleted, type ExtensionSyncStatus } from "@/lib/extension-bridge";
 import { segmentByKeywords } from "@/lib/highlight-keywords";
+import { recordCost } from "@/lib/cost-log";
 import { scoreResume, sectionReadiness, suggestImprovements, thinSections } from "@/lib/ats-score";
 import { renderResumeText, renderCoverLetterText } from "@/lib/pdf-generator";
 import { ExportButtons, BulletsCard, InterviewPrepCard, OutreachCard, QuestionsCard } from "@/components/ResultToolkit";
@@ -238,6 +239,7 @@ export default function ApplyPage() {
       saveApplication(app);
       setLastAppId(app.id);
 
+      recordCost(Number(data.estimatedCost) || 0, "tailor");
       setStatusMessage(`ATS Score: ${data.atsScore}/100 · Cost: $${data.estimatedCost}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Tailoring failed");
@@ -380,6 +382,7 @@ export default function ApplyPage() {
           variants: data.variants ?? [],
           status: "draft",
         });
+        recordCost(Number(data.estimatedCost) || 0, "batch");
         setBatchLog((l) => [...l, `✓ ${jobData.title} at ${jobData.company} — ATS ${data.atsScore}/100 (saved to tracker)`]);
       } catch {
         setBatchLog((l) => [...l, `✗ ${url} — network error`]);

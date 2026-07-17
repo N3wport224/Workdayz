@@ -5,8 +5,11 @@ import { loadApplications, saveApplication, deleteApplication } from "@/lib/stor
 import {
   buildCsv,
   duplicateIds,
+  effectiveBullets,
   followUpsToIcs,
   isFollowUpOverdue,
+  keywordGaps,
+  medianResponseDays,
   responseStats,
   timeInStage,
   trackerSummaryMarkdown,
@@ -179,6 +182,39 @@ export default function ApplicationsPage() {
                   </p>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Item 98: your own time-to-response benchmark */}
+          {medianResponseDays(applications) !== null && (
+            <p className="mt-3 text-xs text-gray-500">
+              ⏱ Your median time to first response: <span className="text-gray-300">{medianResponseDays(applications)} day(s)</span> — anything past double that probably deserves a follow-up.
+            </p>
+          )}
+
+          {/* Item 97: recurring keyword gaps — a "what to learn next" signal */}
+          {keywordGaps(applications).length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 uppercase mb-1">Recurring keyword gaps (last {Math.min(applications.length, 20)} applications)</p>
+              <div className="flex flex-wrap gap-1.5">
+                {keywordGaps(applications).map((g) => (
+                  <span key={g.keyword} className="px-2 py-0.5 rounded-full text-xs bg-amber-900/40 text-amber-300 border border-amber-700/40" title={`Missing from ${g.count} of your last ${g.total} applications — a repeated gap worth actually learning or adding truthfully.`}>
+                    {g.keyword} ×{g.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Item 99: bullets that correlate with responses */}
+          {effectiveBullets(applications).length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-500 uppercase mb-1">Bullets in applications that got responses</p>
+              <ul className="text-xs text-gray-400 space-y-1">
+                {effectiveBullets(applications).map((b, i) => (
+                  <li key={i}>💪 &ldquo;{b.bullet.slice(0, 110)}{b.bullet.length > 110 ? "…" : ""}&rdquo; <span className="text-gray-500">({b.responded}/{b.sent} responded)</span></li>
+                ))}
+              </ul>
             </div>
           )}
         </div>

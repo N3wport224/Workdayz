@@ -5,6 +5,7 @@ import { loadSettings, saveSettings, exportAllData, importAllData, wipeAllData }
 import type { ExtensionSettings } from "@/lib/storage";
 import { buildFullBackup, isFullBackup, restoreFullBackup } from "@/lib/full-backup";
 import { encryptBackup, decryptBackup, isEncryptedBackup } from "@/lib/crypto-backup";
+import { summarizeCosts, type CostSummary } from "@/lib/cost-log";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<ExtensionSettings>({ anthropicKey: "", model: "", autoSyncExtension: true });
@@ -55,10 +56,13 @@ export default function SettingsPage() {
   };
 
   const [keyStale, setKeyStale] = useState(false);
+  // Item 96: local API-spend estimate
+  const [costs, setCosts] = useState<CostSummary | null>(null);
 
   useEffect(() => {
     const loaded = loadSettings();
     setSettings(loaded);
+    setCosts(summarizeCosts());
     // Item 79: rotation reminder, computed once on mount (render must stay pure).
     setKeyStale(
       Boolean(loaded.anthropicKey && loaded.keySavedAt) &&
@@ -131,6 +135,24 @@ export default function SettingsPage() {
           </p>
         )}
       </div>
+
+      {/* Item 96: API spend dashboard (local estimates) */}
+      {costs && costs.runs > 0 && (
+        <div className="card">
+          <h2 className="font-semibold mb-2">💸 API spend (estimated)</h2>
+          <div className="grid grid-cols-2 gap-4 text-center text-sm">
+            <div>
+              <div className="text-2xl font-bold">${costs.thisMonthUsd.toFixed(2)}</div>
+              <div className="text-gray-500 text-xs uppercase">This month ({costs.thisMonthRuns} run{costs.thisMonthRuns === 1 ? "" : "s"})</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold">${costs.totalUsd.toFixed(2)}</div>
+              <div className="text-gray-500 text-xs uppercase">All time ({costs.runs} runs)</div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Estimates from per-run token counts and published rates — check console.anthropic.com for actual billing.</p>
+        </div>
+      )}
 
       {/* Item 80: plain-language privacy statement */}
       <div className="card">
