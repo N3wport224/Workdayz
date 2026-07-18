@@ -130,7 +130,7 @@ export default function SettingsPage() {
             className="w-4 h-4"
           />
           Remember this key in the browser
-          <span className="text-xs text-gray-500">(unchecked = kept only until the browser closes)</span>
+          <span className="text-xs text-gray-400">(unchecked = kept only until the browser closes)</span>
         </label>
         {/* Item 79: rotation reminder */}
         {keyStale && (

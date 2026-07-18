@@ -1,4 +1,4 @@
-import { STORAGE_KEYS, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
+import { STORAGE_KEYS, isWorkdayDomain, type AutofillPackage, type AutofillRunSummary, type BaseProfile, type CustomFillRule } from "../types";
 import { getSettings, updateSettings, resetSettings, getUsageStats, saveTemplate, loadTemplates, deleteTemplate, getShortcutInfo, type ExtensionSettings } from "../content/features";
 import { runAudit } from "../content/feature-audit";
 
@@ -198,10 +198,21 @@ connectBtn.addEventListener("click", async () => {
   const url = webAppUrlInput.value.trim();
   if (!url) return;
   let origin: string;
+  let hostname: string;
   try {
-    origin = new URL(url).origin;
+    const parsed = new URL(url);
+    origin = parsed.origin;
+    hostname = parsed.hostname;
   } catch {
     showFeedback(connectFeedback, "Enter a valid URL, e.g. http://localhost:3000", "error");
+    return;
+  }
+
+  // The bridge trusts any postMessage on the page it runs on — never let it
+  // run on a Workday tenant itself (myworkdayjobs.com is already a required
+  // permission, so the request below would succeed silently otherwise).
+  if (isWorkdayDomain(hostname)) {
+    showFeedback(connectFeedback, "That's a Workday site — connect the extension to your own web app's URL instead.", "error");
     return;
   }
 
@@ -212,7 +223,11 @@ connectBtn.addEventListener("click", async () => {
     return;
   }
 
-  await chrome.runtime.sendMessage({ type: "REGISTER_WEB_APP_ORIGIN", origin });
+  const response = await chrome.runtime.sendMessage({ type: "REGISTER_WEB_APP_ORIGIN", origin });
+  if (!response?.ok) {
+    showFeedback(connectFeedback, "Couldn't connect to that origin.", "error");
+    return;
+  }
   showFeedback(connectFeedback, `Connected to ${origin}. Reload the web app tab.`, "success");
 });
 

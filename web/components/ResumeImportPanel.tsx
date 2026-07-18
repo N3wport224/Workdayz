@@ -86,7 +86,7 @@ export function ResumeImportPanel({ onImported }: { onImported: (profile: Resume
         onClick={() => setOpen(true)}
         {...dragProps}
         className={`rounded-md border border-dashed px-4 py-2 text-sm font-medium w-full mb-8 ${
-          dragging ? "border-blue-400 bg-blue-500/15 text-blue-300" : "border-blue-500/50 text-blue-600 dark:text-blue-400"
+          dragging ? "border-blue-400 bg-blue-500/15 text-blue-300" : "border-blue-500/50 text-blue-400"
         }`}
       >
         {dragging

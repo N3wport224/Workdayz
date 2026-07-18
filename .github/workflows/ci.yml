@@ -69,3 +69,5 @@ jobs:
         run: npm test
       - name: Popup UI e2e (tabs, toggles, theme, storage)
         run: npm run test:popup
+      - name: Bridge-origin guard (never bridge onto a Workday domain)
+        run: npm run test:bridge-guard

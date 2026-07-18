@@ -1,6 +1,27 @@
 // Mirrors web/lib/types.ts — kept in sync manually since the web app and
 // extension build separately and don't share a package.
 
+/**
+ * True for any Workday-family hostname (myworkdayjobs.com career sites,
+ * or the internal myworkday.com / workday.com portal). The web-app bridge
+ * (background.ts registerBridgeForOrigin, popup.ts's Connect button) must
+ * never register on one of these: that bridge trusts any postMessage with
+ * {source: "workdayz-web"} on the page it's injected into and silently
+ * writes it as the user's stored profile/package. myworkdayjobs.com is
+ * already a required host permission, so chrome.permissions.request()
+ * for it succeeds with no prompt — without this guard, connecting to a
+ * Workday tenant by mistake would let that tenant's own page script
+ * (or a compromised/malicious one) forge profile-store messages.
+ */
+export function isWorkdayDomain(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return (
+    h === "myworkdayjobs.com" || h.endsWith(".myworkdayjobs.com") ||
+    h === "myworkday.com" || h.endsWith(".myworkday.com") ||
+    h === "workday.com" || h.endsWith(".workday.com")
+  );
+}
+
 export interface ContactInfo {
   firstName: string;
   lastName: string;

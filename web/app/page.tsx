@@ -111,7 +111,7 @@ export default function HomePage() {
           ].map((item, i) => (
             <p key={i} className={item.ok ? "text-green-400" : "text-gray-400"}>
               {item.ok ? "✅" : "⬜"} {item.label}
-              {!item.ok && <span className="text-gray-500"> — {item.fix}</span>}
+              {!item.ok && <span className="text-gray-400"> — {item.fix}</span>}
             </p>
           ))}
         </div>

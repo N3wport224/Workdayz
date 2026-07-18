@@ -281,7 +281,7 @@ export default function ProfilePage() {
         {profileNames.length > 1 && (
           <button onClick={handleDeleteProfile} className="btn btn-secondary btn-sm text-red-400">Delete</button>
         )}
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-400">
           Keep separate resumes (e.g. &ldquo;Warehouse&rdquo; vs &ldquo;Office&rdquo;) — the active one feeds tailoring &amp; autofill.
         </span>
         {extSyncNote && <span className="text-xs text-blue-400 ml-auto">🔌 {extSyncNote}</span>}

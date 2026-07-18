@@ -46,7 +46,6 @@ try {
     await page.goto(`${BASE}${route}`, { waitUntil: "networkidle" });
     await page.addScriptTag({ content: axeSource });
     const results = await page.evaluate(async () => {
-      // eslint-disable-next-line no-undef
       return await axe.run(document, { resultTypes: ["violations"] });
     });
     const critical = results.violations.filter((v) => v.impact === "critical");

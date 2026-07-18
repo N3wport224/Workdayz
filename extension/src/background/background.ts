@@ -1,8 +1,15 @@
-import { STORAGE_KEYS, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
+import { STORAGE_KEYS, isWorkdayDomain, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
 
 const BRIDGE_SCRIPT_ID = "workdayz-web-app-bridge";
 
 async function registerBridgeForOrigin(origin: string): Promise<void> {
+  let hostname: string;
+  try {
+    hostname = new URL(origin).hostname;
+  } catch {
+    return; // not a valid origin — nothing to register
+  }
+  if (isWorkdayDomain(hostname)) return; // never bridge onto a Workday tenant itself
   const pattern = `${origin.replace(/\/$/, "")}/*`;
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [BRIDGE_SCRIPT_ID] });
   const config: chrome.scripting.RegisteredContentScript = {
@@ -126,6 +133,15 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       return { ok: true };
     }
     case "REGISTER_WEB_APP_ORIGIN": {
+      let hostname = "";
+      try {
+        hostname = new URL(message.origin).hostname;
+      } catch {
+        return { ok: false, reason: "invalid-origin" };
+      }
+      if (isWorkdayDomain(hostname)) {
+        return { ok: false, reason: "workday-domain" };
+      }
       await chrome.storage.local.set({ [STORAGE_KEYS.webAppOrigin]: message.origin });
       await registerBridgeForOrigin(message.origin);
       return { ok: true };
