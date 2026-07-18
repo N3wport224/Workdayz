@@ -31,10 +31,18 @@ async function waitForServer(timeoutMs) {
   throw new Error("next start never became ready");
 }
 
+// detached => own process group, so we can kill the whole tree even if this
+// script crashes mid-run (a lone `server.kill()` leaves next-server alive,
+// squatting on the port and serving stale content to the next test run).
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   stdio: "ignore",
+  detached: true,
   env: { ...process.env, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "a11y-placeholder" },
 });
+const stopServer = () => {
+  try { process.kill(-server.pid, "SIGTERM"); } catch { /* already gone */ }
+};
+process.on("exit", stopServer);
 
 let criticalTotal = 0;
 try {
@@ -57,7 +65,7 @@ try {
   }
   await browser.close();
 } finally {
-  server.kill();
+  stopServer();
 }
 
 if (criticalTotal > 0) {
