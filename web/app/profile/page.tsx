@@ -11,8 +11,9 @@ import {
   switchProfile,
   createNamedProfile,
   deleteNamedProfile,
+  loadAllProfiles,
 } from "@/lib/storage";
-import { sendProfile, getBridgeStatus, requestSyncStatus, onSyncStatus, onProfileStored } from "@/lib/extension-bridge";
+import { sendProfile, sendProfileList, getBridgeStatus, requestSyncStatus, onSyncStatus, onProfileStored } from "@/lib/extension-bridge";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
 import type { ResumeProfile } from "@/lib/types";
 
@@ -122,21 +123,37 @@ export default function ProfilePage() {
     setProfile((p) => ({ ...p, experience: p.experience.filter((_, i) => i !== idx) }));
   };
 
+  /** Shapes a web-app ResumeProfile into the slimmer BaseProfile the
+   * extension stores. */
+  const toBaseProfilePayload = (p: ResumeProfile) => ({
+    contact: p.contact,
+    summary: p.summary,
+    skills: p.skills,
+    experience: p.experience,
+    education: p.education,
+    certifications: p.certifications.map((c) => c.name),
+    certificationDetails: p.certifications,
+    references: p.references,
+  });
+
+  /** Pushes every saved named profile to the extension so its on-page widget
+   * can offer a picker instead of only ever knowing about the last one saved. */
+  const syncProfileListToExtension = (activeNameForSync: string) => {
+    if (getBridgeStatus() !== "detected") return;
+    const map = loadAllProfiles();
+    const payload = Object.fromEntries(
+      Object.entries(map).map(([name, p]) => [name, toBaseProfilePayload(p)]),
+    );
+    sendProfileList(payload, activeNameForSync);
+  };
+
   const save = () => {
     saveNamedProfile(profile); // saves the active named profile + legacy mirror
     // Sync to extension
     if (getBridgeStatus() === "detected") {
-      sendProfile({
-        contact: profile.contact,
-        summary: profile.summary,
-        skills: profile.skills,
-        experience: profile.experience,
-        education: profile.education,
-        certifications: profile.certifications.map((c) => c.name),
-        certificationDetails: profile.certifications,
-        references: profile.references,
-      });
+      sendProfile(toBaseProfilePayload(profile));
     }
+    syncProfileListToExtension(activeName);
     setSaved(true);
     setImportNotice("");
     setTimeout(() => setSaved(false), 2000);
@@ -226,6 +243,7 @@ export default function ProfilePage() {
       setProfile(next);
       setActiveName(name);
       setImportNotice("");
+      syncProfileListToExtension(name);
     }
   };
 
@@ -241,6 +259,7 @@ export default function ProfilePage() {
     setProfileNames(listProfileNames());
     setActiveName(name);
     setProfile(created);
+    syncProfileListToExtension(name);
   };
 
   const handleDeleteProfile = () => {
@@ -252,6 +271,7 @@ export default function ProfilePage() {
     setActiveName(nowActive);
     const p = loadProfile();
     if (p) setProfile(p);
+    syncProfileListToExtension(nowActive);
   };
 
   return (

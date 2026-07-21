@@ -74,6 +74,12 @@ function loadProfileMap(): Record<string, ResumeProfile> {
   }
 }
 
+/** Every named profile, keyed by name — used to sync the full set to the
+ * extension so its widget can offer a picker. */
+export function loadAllProfiles(): Record<string, ResumeProfile> {
+  return loadProfileMap();
+}
+
 export function listProfileNames(): string[] {
   const names = Object.keys(loadProfileMap());
   return names.length ? names.sort() : ["Default"];

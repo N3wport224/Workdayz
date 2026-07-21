@@ -146,6 +146,11 @@ export const STORAGE_KEYS = {
   scrapedJob: "workdayz.scrapedJob",
   autofillPackage: "workdayz.autofillPackage",
   baseProfile: "workdayz.baseProfile",
+  /** Record<name, BaseProfile> — every named profile synced from the web
+   * app's /profile page, so the widget can offer a picker between them. */
+  profiles: "workdayz.profiles",
+  /** Which entry in `profiles` is currently selected as `baseProfile`. */
+  activeProfileName: "workdayz.activeProfileName",
   customRules: "workdayz.customRules",
   hearAboutUs: "workdayz.hearAboutUs",
   widgetPosition: "workdayz.widgetPosition",
@@ -181,6 +186,8 @@ export const MESSAGE_TYPES = {
   scrapedJob: "WORKDAYZ_SCRAPED_JOB",
   packageStored: "WORKDAYZ_PACKAGE_STORED",
   profile: "WORKDAYZ_PROFILE",
+  /** The full set of named profiles, so the widget can offer a picker. */
+  profileList: "WORKDAYZ_PROFILE_LIST",
   ping: "WORKDAYZ_PING",
   /** Items 74/77: web app asks what the extension currently holds. */
   requestSyncStatus: "WORKDAYZ_REQUEST_SYNC_STATUS",
@@ -203,6 +210,9 @@ export type RuntimeMessage =
   | { type: "ANSWER_QUESTIONS"; questions: string[] }
   | { type: "STORE_PROFILE"; payload: BaseProfile }
   | { type: "GET_PROFILE" }
+  | { type: "STORE_PROFILE_LIST"; payload: { profiles: Record<string, BaseProfile>; activeName: string } }
+  | { type: "GET_PROFILE_LIST" }
+  | { type: "SET_ACTIVE_PROFILE"; name: string }
   | { type: "SET_BADGE"; count: number; stillRequired?: number }
   | { type: "GET_SYNC_STATUS" }
   | { type: "FILL_COMPLETED_RELAY"; count: number; stillRequired: number };

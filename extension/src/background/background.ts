@@ -126,6 +126,41 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
       const data = await chrome.storage.local.get(STORAGE_KEYS.baseProfile);
       return { profile: (data[STORAGE_KEYS.baseProfile] as BaseProfile | undefined) ?? null };
     }
+    case "STORE_PROFILE_LIST": {
+      const { profiles, activeName } = message.payload;
+      // Keep whatever the user already picked in the widget if it still
+      // exists in the new set; otherwise fall back to the web app's active one.
+      const stored = await chrome.storage.local.get(STORAGE_KEYS.activeProfileName);
+      const currentActive = stored[STORAGE_KEYS.activeProfileName] as string | undefined;
+      const chosen = currentActive && profiles[currentActive] ? currentActive : activeName;
+      const toSet: Record<string, unknown> = {
+        [STORAGE_KEYS.profiles]: profiles,
+        [STORAGE_KEYS.activeProfileName]: chosen,
+      };
+      if (profiles[chosen]) {
+        toSet[STORAGE_KEYS.baseProfile] = { ...profiles[chosen], syncedAt: new Date().toISOString() };
+      }
+      await chrome.storage.local.set(toSet);
+      return { ok: true };
+    }
+    case "GET_PROFILE_LIST": {
+      const data = await chrome.storage.local.get([STORAGE_KEYS.profiles, STORAGE_KEYS.activeProfileName]);
+      return {
+        profiles: (data[STORAGE_KEYS.profiles] as Record<string, BaseProfile> | undefined) ?? {},
+        activeName: (data[STORAGE_KEYS.activeProfileName] as string | undefined) ?? "",
+      };
+    }
+    case "SET_ACTIVE_PROFILE": {
+      const data = await chrome.storage.local.get(STORAGE_KEYS.profiles);
+      const profiles = (data[STORAGE_KEYS.profiles] as Record<string, BaseProfile> | undefined) ?? {};
+      const profile = profiles[message.name];
+      if (!profile) return { ok: false };
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.activeProfileName]: message.name,
+        [STORAGE_KEYS.baseProfile]: { ...profile, syncedAt: new Date().toISOString() },
+      });
+      return { ok: true };
+    }
     case "OPEN_APPLY_TAB": {
       const stored = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);
       const origin = (stored[STORAGE_KEYS.webAppOrigin] as string | undefined) ?? "http://localhost:3000";

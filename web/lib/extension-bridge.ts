@@ -12,6 +12,7 @@ const MESSAGE_TYPES = {
   scrapedJob: "WORKDAYZ_SCRAPED_JOB",
   packageStored: "WORKDAYZ_PACKAGE_STORED",
   profile: "WORKDAYZ_PROFILE",
+  profileList: "WORKDAYZ_PROFILE_LIST",
   ping: "WORKDAYZ_PING",
   requestSyncStatus: "WORKDAYZ_REQUEST_SYNC_STATUS",
   syncStatus: "WORKDAYZ_SYNC_STATUS",
@@ -136,6 +137,15 @@ export function sendAutofillPackage(pkg: AutofillPackage): void {
 export function sendProfile(profile: BaseProfile): void {
   window.postMessage(
     { source: "workdayz-web", type: MESSAGE_TYPES.profile, payload: profile },
+    window.location.origin,
+  );
+}
+
+/** Sync every named profile to the extension, so its on-page widget can
+ * offer a picker instead of only ever using whichever one synced last. */
+export function sendProfileList(profiles: Record<string, BaseProfile>, activeName: string): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.profileList, payload: { profiles, activeName } },
     window.location.origin,
   );
 }

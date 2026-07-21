@@ -283,7 +283,8 @@ function initApplicationFormWidget() {
   const widget = mountWidget("Workdayz");
   widget.setStatus("Checking for a tailored application...");
 
-  Promise.all([getFillSource(), previousFillForPage(), getSettings(), tenantDriftWarning()]).then(([source, previous, settings, drift]) => {
+  async function refreshReadyStatus() {
+    const [source, previous, settings, drift] = await Promise.all([getFillSource(), previousFillForPage(), getSettings(), tenantDriftWarning()]);
     const alreadyFilled = previous
       ? ` You already filled this page (${previous.filled} field group(s), ${new Date(previous.at).toLocaleString()}).`
       : "";
@@ -303,7 +304,30 @@ function initApplicationFormWidget() {
         widget.setStatus("Auto-fill hit an error — use the buttons below to fill manually.");
       });
     }
-  });
+  }
+
+  // Which saved resume profile to fill from — only shown once there's more
+  // than one, so single-profile users never see an extra control.
+  const profileSelect = document.createElement("select");
+  profileSelect.className = "profileSelect hidden";
+  widget.root.appendChild(profileSelect);
+  sendMessage<{ profiles: Record<string, BaseProfile>; activeName: string }>({ type: "GET_PROFILE_LIST" })
+    .then((list) => {
+      const names = Object.keys(list?.profiles ?? {});
+      if (names.length < 2) return;
+      profileSelect.innerHTML = names
+        .map((name) => `<option value="${escapeHtml(name)}"${name === list.activeName ? " selected" : ""}>${escapeHtml(name)}</option>`)
+        .join("");
+      profileSelect.classList.remove("hidden");
+      profileSelect.addEventListener("change", async () => {
+        await sendMessage({ type: "SET_ACTIVE_PROFILE", name: profileSelect.value });
+        widget.setStatus(`Switched to "${profileSelect.value}" — refreshing...`);
+        await refreshReadyStatus();
+      });
+    })
+    .catch(() => { /* extension updated mid-session — leave the picker hidden */ });
+
+  refreshReadyStatus();
 
   addButton(widget.root, "Preview fill (writes nothing)", async () => {
     try {

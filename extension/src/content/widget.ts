@@ -108,6 +108,18 @@ export function mountWidget(title: string): Widget {
       }
       .hidden { display: none; }
       .bubble.shown { display: block; }
+      select.profileSelect {
+        width: 100%;
+        margin-bottom: 8px;
+        font-size: 11px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: #1f2937;
+        color: #f9fafb;
+        border: 1px solid #374151;
+        font-family: inherit;
+      }
+      .panel.light select.profileSelect { background: #f1f5f9; color: #0f172a; border-color: #e2e8f0; }
       /* Item 71: light theme, driven by the extension's theme setting */
       .panel.light { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; }
       .panel.light .status { opacity: 1; color: #475569; }

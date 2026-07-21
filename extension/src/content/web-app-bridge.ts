@@ -57,6 +57,13 @@ async function handle(data: { type?: string; payload?: unknown }) {
       );
       break;
     }
+    case MESSAGE_TYPES.profileList: {
+      await chrome.runtime.sendMessage({
+        type: "STORE_PROFILE_LIST",
+        payload: data.payload as { profiles: Record<string, BaseProfile>; activeName: string },
+      });
+      break;
+    }
     case MESSAGE_TYPES.requestSyncStatus: {
       // Items 74/77: report what the extension holds right now.
       const status = await chrome.runtime.sendMessage({ type: "GET_SYNC_STATUS" });
