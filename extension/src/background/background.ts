@@ -1,4 +1,13 @@
-import { STORAGE_KEYS, isWorkdayDomain, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
+import { STORAGE_KEYS, isWorkdayDomain, type ApplicationConfirmation, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
+
+/** Same window as content/confirmation.ts's DEDUPE_WINDOW_MS. Duplicated as a
+ * literal because the background worker and content scripts are separate
+ * bundles; the confirmation test asserts they agree. */
+const CONFIRMATION_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Cap on the durable queue. A queue that grows without bound would eventually
+ * hit the storage quota and take the rest of the extension's state with it. */
+const MAX_PENDING_CONFIRMATIONS = 200;
 
 const BRIDGE_SCRIPT_ID = "workdayz-web-app-bridge";
 
@@ -54,7 +63,10 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.MessageSender) {
+/** Exported so test/confirmation-sync.test.mjs drives the REAL dedupe and
+ * queue logic instead of a reimplementation of it. The background bundle is
+ * already an ESM service worker, so an extra export changes nothing at runtime. */
+export async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.MessageSender) {
   switch (message.type) {
     case "STORE_SCRAPED_JOB": {
       await chrome.storage.local.set({ [STORAGE_KEYS.scrapedJob]: message.payload });
@@ -160,6 +172,67 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
         [STORAGE_KEYS.baseProfile]: { ...profile, syncedAt: new Date().toISOString() },
       });
       return { ok: true };
+    }
+    case "RECORD_CONFIRMATION": {
+      const event = message.payload;
+      const stored = await chrome.storage.local.get([
+        STORAGE_KEYS.confirmationLog,
+        STORAGE_KEYS.pendingConfirmations,
+      ]);
+      const log = (stored[STORAGE_KEYS.confirmationLog] ?? {}) as Record<string, { at: string }>;
+
+      // Dedupe here rather than in the content script: a reload or a
+      // back-navigation builds a brand-new content script with no memory of
+      // the last one, so only persisted state can catch a repeat.
+      const previous = log[event.key]?.at;
+      const previousMs = previous ? Date.parse(previous) : NaN;
+      if (Number.isFinite(previousMs) && Math.abs(Date.now() - previousMs) < CONFIRMATION_DEDUPE_WINDOW_MS) {
+        return { ok: true, duplicate: true, firstSeenAt: previous };
+      }
+
+      const queue = (stored[STORAGE_KEYS.pendingConfirmations] ?? []) as ApplicationConfirmation[];
+      // Newest kept when over cap — an old unconsumed confirmation is the
+      // least valuable thing to hold on to.
+      const nextQueue = [...queue.filter((c) => c.key !== event.key), event].slice(-MAX_PENDING_CONFIRMATIONS);
+
+      await chrome.storage.local.set({
+        [STORAGE_KEYS.confirmationLog]: { ...log, [event.key]: { at: event.submittedAt } },
+        [STORAGE_KEYS.pendingConfirmations]: nextQueue,
+      });
+
+      // Best-effort live relay so an open tracker updates immediately. The
+      // queue above is what makes this reliable when nothing is open.
+      try {
+        const originData = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);
+        const origin = originData[STORAGE_KEYS.webAppOrigin] as string | undefined;
+        if (origin) {
+          const tabs = await chrome.tabs.query({ url: `${origin.replace(/\/$/, "")}/*` });
+          for (const tab of tabs) {
+            if (tab.id !== undefined) {
+              chrome.tabs.sendMessage(tab.id, { type: "CONFIRMATION_RELAY", payload: event }).catch(() => {});
+            }
+          }
+        }
+      } catch {
+        /* relay is best-effort; the queue is the source of truth */
+      }
+
+      return { ok: true, duplicate: false, queued: nextQueue.length };
+    }
+    case "GET_PENDING_CONFIRMATIONS": {
+      const data = await chrome.storage.local.get(STORAGE_KEYS.pendingConfirmations);
+      return { confirmations: (data[STORAGE_KEYS.pendingConfirmations] ?? []) as ApplicationConfirmation[] };
+    }
+    case "ACK_CONFIRMATIONS": {
+      // Only drop what the web app says it actually committed. Anything it
+      // didn't acknowledge stays queued for the next drain, so a crash
+      // mid-write can't silently lose a submission.
+      const data = await chrome.storage.local.get(STORAGE_KEYS.pendingConfirmations);
+      const queue = (data[STORAGE_KEYS.pendingConfirmations] ?? []) as ApplicationConfirmation[];
+      const acked = new Set(message.keys ?? []);
+      const remaining = queue.filter((c) => !acked.has(c.key));
+      await chrome.storage.local.set({ [STORAGE_KEYS.pendingConfirmations]: remaining });
+      return { ok: true, remaining: remaining.length };
     }
     case "OPEN_APPLY_TAB": {
       const stored = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);

@@ -64,6 +64,30 @@ async function handle(data: { type?: string; payload?: unknown }) {
       });
       break;
     }
+    case MESSAGE_TYPES.requestPendingConfirmations: {
+      // Drains submissions logged while the web app was closed — the common
+      // case, since people apply and then close the tab.
+      const response = await chrome.runtime.sendMessage({ type: "GET_PENDING_CONFIRMATIONS" });
+      window.postMessage(
+        {
+          source: "workdayz-extension",
+          type: MESSAGE_TYPES.pendingConfirmations,
+          payload: response?.confirmations ?? [],
+        },
+        window.location.origin,
+      );
+      break;
+    }
+    case MESSAGE_TYPES.confirmationsAcknowledged: {
+      // Only the keys the web app actually committed are dropped, so a failed
+      // write leaves the confirmation queued for the next drain.
+      const keys = (data.payload as { keys?: unknown })?.keys;
+      await chrome.runtime.sendMessage({
+        type: "ACK_CONFIRMATIONS",
+        keys: Array.isArray(keys) ? keys.filter((k): k is string => typeof k === "string") : [],
+      });
+      break;
+    }
     case MESSAGE_TYPES.requestSyncStatus: {
       // Items 74/77: report what the extension holds right now.
       const status = await chrome.runtime.sendMessage({ type: "GET_SYNC_STATUS" });
@@ -89,7 +113,7 @@ async function handle(data: { type?: string; payload?: unknown }) {
 // Item 78: the background relays "a fill just finished on a Workday tab" —
 // forward it to the page so the web app can toast it live.
 try {
-  chrome.runtime.onMessage.addListener((message: { type?: string; count?: number; stillRequired?: number }) => {
+  chrome.runtime.onMessage.addListener((message: { type?: string; count?: number; stillRequired?: number; payload?: unknown }) => {
     if (message?.type === "FILL_COMPLETED_RELAY") {
       window.postMessage(
         {
@@ -97,6 +121,14 @@ try {
           type: MESSAGE_TYPES.fillCompleted,
           payload: { count: message.count ?? 0, stillRequired: message.stillRequired ?? 0 },
         },
+        window.location.origin,
+      );
+    }
+    // A submission just landed on a Workday tab — let an open tracker react
+    // immediately instead of waiting for the next drain.
+    if (message?.type === "CONFIRMATION_RELAY") {
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.applicationConfirmed, payload: message.payload },
         window.location.origin,
       );
     }

@@ -73,3 +73,7 @@ jobs:
         run: npm run test:bridge-guard
       - name: Answer memory (recall + never remember self-ID questions)
         run: npm run test:answer-memory
+      - name: Confirmation detection (incl. false-positive guards)
+        run: npm run test:confirmation
+      - name: Confirmation sync (dedupe + durable queue)
+        run: npm run test:confirmation-sync

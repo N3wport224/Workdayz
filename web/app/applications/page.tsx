@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { loadApplications, saveApplication, deleteApplication } from "@/lib/storage";
+import { loadApplications, saveApplications, saveApplication, deleteApplication } from "@/lib/storage";
 import {
+  applyConfirmations,
   buildCsv,
   duplicateIds,
   effectiveBullets,
@@ -16,6 +17,7 @@ import {
   weeklyVolume,
   withStatusChange,
 } from "@/lib/tracker";
+import { acknowledgeConfirmations, onApplicationConfirmed, requestPendingConfirmations } from "@/lib/extension-bridge";
 import type { TailoredApplication, ApplicationStatus } from "@/lib/types";
 
 const statuses: ApplicationStatus[] = ["draft", "applied", "screening", "interview", "offer", "rejected", "accepted", "archived"];
@@ -42,6 +44,36 @@ export default function ApplicationsPage() {
 
   useEffect(() => {
     setApps(loadApplications());
+
+    // Confirmation auto-sync. Reads from storage rather than the `applications`
+    // state so this effect stays mount-only — depending on state here would
+    // re-subscribe on every tracker edit.
+    const ingest = (incoming: Parameters<Parameters<typeof onApplicationConfirmed>[0]>[0]) => {
+      if (!incoming.length) return;
+      const { apps: next, outcomes } = applyConfirmations(loadApplications(), incoming);
+      saveApplications(next);
+      setApps(next);
+
+      // Acknowledge only what landed, so a confirmation is never dropped from
+      // the extension's queue without being written here first.
+      acknowledgeConfirmations(outcomes.map((o) => o.key));
+
+      const created = outcomes.filter((o) => o.action === "created").length;
+      const updated = outcomes.filter((o) => o.action === "updated").length;
+      const parts: string[] = [];
+      if (updated) parts.push(`${updated} marked Applied`);
+      if (created) parts.push(`${created} newly logged from a confirmation page`);
+      if (parts.length) setMessage(`Synced from Workday: ${parts.join(", ")}.`);
+    };
+
+    const off = onApplicationConfirmed(ingest);
+    // Drain whatever was logged while this page was closed — the usual case,
+    // since people submit an application and then close the tab.
+    const drain = setTimeout(requestPendingConfirmations, 800); // let the bridge attach
+    return () => {
+      off();
+      clearTimeout(drain);
+    };
   }, []);
 
   const persist = (updated: TailoredApplication) => {

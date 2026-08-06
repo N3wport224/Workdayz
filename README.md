@@ -250,6 +250,40 @@ Run the audit from any context to get a version‑stamped `AuditReport` with
 pass/fail/warn per check. The report contains no personal data — only
 extension health metadata.
 
+## Confirmation auto-sync
+
+When you actually submit an application, the extension notices and the tracker
+moves it to **Applied** with the real submission timestamp — no retyping.
+
+Detection is deliberately conservative, because a false positive is worse than
+a miss: it marks a job as applied when it wasn't, and you stop chasing a real
+application. So a confirmation URL is trusted on its own, but DOM-only evidence
+must appear in a **heading** — "Application Submitted" as a row in your
+my-applications list is not a confirmation — and any page still showing
+fillable application fields is never treated as one, however it's worded.
+
+**A submission is never lost, and never double-logged:**
+
+- **Durable queue.** You usually submit and then close the tab, so a
+  fire-and-forget message to the web app would lose the event entirely.
+  Confirmations are queued in extension storage and drained when the tracker
+  next opens (a live relay updates an already-open tracker immediately).
+- **Acknowledgement-based removal.** The extension drops a queued confirmation
+  only after the web app confirms it wrote it. A failed write leaves it queued
+  for the next drain rather than silently vanishing.
+- **Persisted dedupe.** Reloading or navigating back to a confirmation page
+  builds a whole new content script, so in-memory guards can't catch a repeat —
+  the dedupe log lives in storage, keyed on tenant + company + requisition id
+  (falling back to the title). A 24-hour window absorbs reloads while still
+  letting a genuine re-application months later record.
+- **Never regresses a later stage.** A confirmation for something already at
+  screening/interview/offer is a no-op — revisiting an old confirmation page
+  can't reset your progress.
+- **Unmatched submissions still get recorded.** If nothing in the tracker
+  matches, a minimal entry is created; a submission the tracker never heard
+  about is exactly the one worth not losing. Matching requires company *and*
+  title, so tracking several roles at one employer can't mark the wrong one.
+
 ## Bullet ranking & standalone cover letters
 
 Two AI-engine pieces that run independently of a full tailoring pass.
@@ -333,8 +367,8 @@ GitHub Actions runs both halves on every push (`.github/workflows/ci.yml`):
 
 | Job | Steps |
 |-----|-------|
-| **Web app** | `tsc --noEmit`, `eslint`, 176 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
-| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite |
+| **Web app** | `tsc --noEmit`, `eslint`, 209 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
+| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite, confirmation detection, confirmation sync |
 
 ## Safety notes
 

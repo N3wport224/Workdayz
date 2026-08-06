@@ -169,6 +169,13 @@ export const STORAGE_KEYS = {
    * from past applications and recalled on later ones. Never holds self-ID
    * questions; see content/answer-memory.ts. */
   answerMemory: "workdayz.answerMemory",
+  /** Record<confirmationKey, { at: string }> — submissions already logged, so a
+   * reload or back-navigation to a confirmation page can't double-log. */
+  confirmationLog: "workdayz.confirmationLog",
+  /** ConfirmationEvent[] — a durable queue drained by the web app. Needed
+   * because a submission usually happens with the web app closed, and a
+   * fire-and-forget relay would lose it entirely. */
+  pendingConfirmations: "workdayz.pendingConfirmations",
   /** Item 58 — Record<hostname, string[]>: the form-label fingerprint from
    * the last successful fill, to detect tenant DOM changes. */
   tenantFingerprints: "workdayz.tenantFingerprints",
@@ -200,6 +207,13 @@ export const MESSAGE_TYPES = {
   profileStored: "WORKDAYZ_PROFILE_STORED",
   /** Item 78: a fill finished on a Workday tab. */
   fillCompleted: "WORKDAYZ_FILL_COMPLETED",
+  /** An application was submitted — the web app moves it to "Applied". */
+  applicationConfirmed: "WORKDAYZ_APPLICATION_CONFIRMED",
+  /** Web app asks for confirmations queued while it was closed. */
+  requestPendingConfirmations: "WORKDAYZ_REQUEST_PENDING_CONFIRMATIONS",
+  pendingConfirmations: "WORKDAYZ_PENDING_CONFIRMATIONS",
+  /** Web app reports which queued confirmations it has committed to the tracker. */
+  confirmationsAcknowledged: "WORKDAYZ_CONFIRMATIONS_ACKNOWLEDGED",
 } as const;
 
 // chrome.runtime message protocol between content scripts, popup, and background
@@ -219,7 +233,25 @@ export type RuntimeMessage =
   | { type: "SET_ACTIVE_PROFILE"; name: string }
   | { type: "SET_BADGE"; count: number; stillRequired?: number }
   | { type: "GET_SYNC_STATUS" }
-  | { type: "FILL_COMPLETED_RELAY"; count: number; stillRequired: number };
+  | { type: "FILL_COMPLETED_RELAY"; count: number; stillRequired: number }
+  | { type: "RECORD_CONFIRMATION"; payload: ApplicationConfirmation }
+  | { type: "GET_PENDING_CONFIRMATIONS" }
+  | { type: "ACK_CONFIRMATIONS"; keys: string[] }
+  | { type: "CONFIRMATION_RELAY"; payload: ApplicationConfirmation };
+
+/** A submitted application, detected on a Workday confirmation page.
+ * Mirrors content/confirmation.ts's ConfirmationEvent. */
+export interface ApplicationConfirmation {
+  key: string;
+  company: string;
+  title: string;
+  jobId: string;
+  submittedAt: string;
+  sourceUrl: string;
+  hostname: string;
+  via: "url" | "dom";
+  evidence: string;
+}
 
 export interface QuestionAnswer {
   question: string;

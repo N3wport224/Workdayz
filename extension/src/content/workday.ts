@@ -5,6 +5,7 @@ import { undoFill, fieldLabelText, setFieldValue, findFillableFields, type Filla
 import { addButton, mountWidget, escapeHtml } from "./widget";
 import { getSettings, diffFormVsProfile, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText } from "./features";
 import { applyRememberedAnswers, captureAnswersFromPage, previewRememberedAnswers } from "./answer-memory";
+import { buildConfirmationEvent, detectConfirmation } from "./confirmation";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -13,7 +14,7 @@ import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 // re-evaluate on both history API activity and DOM mutations, debounced, so
 // the widget appears/updates without needing a reload.
 
-type Mode = "none" | "job-posting" | "application-form";
+type Mode = "none" | "job-posting" | "application-form" | "confirmation";
 let currentMode: Mode = "none";
 
 async function sendMessage<T = unknown>(message: RuntimeMessage): Promise<T> {
@@ -586,10 +587,71 @@ function initApplicationFormWidget() {
   });
 }
 
+/**
+ * Confirmation page: log the submission so the tracker moves it to "Applied".
+ *
+ * Runs automatically — this is a record of something the user already did, not
+ * an action taken on their behalf, so there's nothing to consent to. Dedupe
+ * lives in the background worker because a reload builds a fresh content
+ * script with no memory of this one.
+ */
+function initConfirmationWidget() {
+  const detection = detectConfirmation();
+  if (!detection) return;
+
+  const widget = mountWidget("Workdayz");
+  widget.setStatus("Application submitted — logging it to your tracker...");
+
+  void (async () => {
+    try {
+      // The confirmation page usually drops the job title, so prefer what the
+      // extension already knows about what was being applied to.
+      const [{ pkg }, { job }] = await Promise.all([
+        sendMessage<{ pkg: AutofillPackage | null }>({ type: "GET_AUTOFILL_PACKAGE" }),
+        sendMessage<{ job: JobPosting | null }>({ type: "GET_SCRAPED_JOB" }),
+      ]);
+      const context = {
+        title: pkg?.job?.title || job?.title || "",
+        company: pkg?.job?.company || job?.company || "",
+      };
+
+      const event = buildConfirmationEvent(detection, context);
+      const result = await sendMessage<{ ok: boolean; duplicate?: boolean; firstSeenAt?: string }>({
+        type: "RECORD_CONFIRMATION",
+        payload: event,
+      });
+
+      if (result?.duplicate) {
+        const when = result.firstSeenAt ? new Date(result.firstSeenAt).toLocaleString() : "earlier";
+        widget.setStatus(
+          `Already logged this submission (${when}) — reloading this page won't duplicate it in your tracker.`,
+        );
+        return;
+      }
+
+      widget.setStatus(
+        `Logged "${event.title}"${event.company ? ` at ${event.company}` : ""} as Applied${event.jobId ? ` (${event.jobId})` : ""}. Open the Workdayz tracker to see it.`,
+      );
+      widget.showExtendedInfo(
+        `<div class="result-detail">Submitted ${new Date(event.submittedAt).toLocaleString()}<br>Detected via ${escapeHtml(event.via === "url" ? "confirmation URL" : `page heading: "${event.evidence}"`)}</div>`,
+      );
+    } catch {
+      widget.setStatus("Couldn't log this submission — the extension may have been updated. Reload and revisit this page.");
+    }
+  })();
+
+  addButton(widget.root, "Open Workdayz tracker", () => {
+    sendMessage({ type: "OPEN_APPLY_TAB" }).catch(() => {});
+  });
+}
+
 function detectMode(): Mode {
   // Check application-form first: a page can transiently contain posting-like
   // remnants while the SPA is mid-transition into the apply flow.
   if (looksLikeApplicationForm()) return "application-form";
+  // Before job-posting: some tenants render the confirmation inside the
+  // posting shell, so posting markers can still be present after submitting.
+  if (detectConfirmation()) return "confirmation";
   if (isJobPostingPage()) return "job-posting";
   return "none";
 }
@@ -601,6 +663,7 @@ function evaluate() {
   unmountWidget();
   if (mode === "job-posting") initJobPostingWidget();
   else if (mode === "application-form") initApplicationFormWidget();
+  else if (mode === "confirmation") initConfirmationWidget();
 }
 
 let debounceTimer: number | undefined;

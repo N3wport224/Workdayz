@@ -82,6 +82,162 @@ export function timeInStage(app: TailoredApplication): string {
   return days === 0 ? "today" : `${days}d in ${app.status}`;
 }
 
+// --- Confirmation auto-sync -------------------------------------------------
+
+/** What the extension reports when it sees a Workday confirmation page.
+ * Structurally mirrors extension/src/content/confirmation.ts. */
+export interface ApplicationConfirmation {
+  key: string;
+  company: string;
+  title: string;
+  jobId: string;
+  submittedAt: string;
+  sourceUrl: string;
+  hostname: string;
+  via: "url" | "dom";
+  evidence: string;
+}
+
+/** Statuses at or past "applied" — a confirmation must never drag one of these
+ * backwards. Someone already interviewing who revisits an old confirmation
+ * page should not be reset to Applied. */
+const AT_OR_PAST_APPLIED: ApplicationStatus[] = [
+  "applied", "screening", "interview", "offer", "rejected", "accepted",
+];
+
+const normalizeForMatch = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Finds the tracked application a confirmation belongs to.
+ *
+ * Company+title is the same identity `duplicateIds` uses. Archived entries are
+ * skipped, and the newest match wins when several exist (re-applying to the
+ * same req leaves older entries behind).
+ */
+export function matchConfirmation(
+  apps: TailoredApplication[],
+  confirmation: ApplicationConfirmation,
+): TailoredApplication | null {
+  const company = normalizeForMatch(confirmation.company);
+  const title = normalizeForMatch(confirmation.title);
+  if (!company && !title) return null;
+
+  const candidates = apps.filter((a) => {
+    if (a.archived) return false;
+    const sameCompany = normalizeForMatch(a.job.company) === company;
+    const sameTitle = normalizeForMatch(a.job.title) === title;
+    // Both must line up. Matching on company alone would mark the wrong role
+    // as applied for anyone who tracks several openings at one employer.
+    return sameCompany && sameTitle;
+  });
+  if (!candidates.length) return null;
+
+  return [...candidates].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
+export interface ConfirmationOutcome {
+  apps: TailoredApplication[];
+  /** What happened, so the UI can say so rather than silently mutating state. */
+  action: "updated" | "created" | "already-applied";
+  applicationId: string;
+}
+
+/**
+ * Records a confirmation against the tracker. Pure — returns a new list.
+ *
+ * Three outcomes:
+ *   - a matching draft becomes "applied", with the submission timestamp
+ *   - an already-applied match is left alone (idempotent by design: the queue
+ *     can redeliver, and the user can revisit a confirmation page any time)
+ *   - no match creates a minimal entry, because a submission the tracker never
+ *     heard about is exactly the one worth not losing
+ */
+export function applyConfirmation(
+  apps: TailoredApplication[],
+  confirmation: ApplicationConfirmation,
+  makeId: () => string = () => `conf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+): ConfirmationOutcome {
+  const existing = matchConfirmation(apps, confirmation);
+
+  if (existing) {
+    if (AT_OR_PAST_APPLIED.includes(existing.status)) {
+      return { apps, action: "already-applied", applicationId: existing.id };
+    }
+    const updated: TailoredApplication = {
+      ...withStatusChange(existing, "applied"),
+      // Prefer the real submission moment over "when the tracker found out".
+      updatedAt: confirmation.submittedAt,
+      job: {
+        ...existing.job,
+        // Fill a missing source URL from the confirmation; never overwrite one.
+        sourceUrl: existing.job.sourceUrl || confirmation.sourceUrl,
+      },
+    };
+    const history = updated.statusHistory ?? [];
+    return {
+      apps: apps.map((a) => (a.id === existing.id ? {
+        ...updated,
+        // withStatusChange stamps "now"; correct the last entry to the
+        // submission time so time-in-stage and response-time math are right.
+        statusHistory: history.map((h, i) =>
+          i === history.length - 1 && h.status === "applied" ? { ...h, at: confirmation.submittedAt } : h,
+        ),
+      } : a)),
+      action: "updated",
+      applicationId: existing.id,
+    };
+  }
+
+  const id = makeId();
+  const created: TailoredApplication = {
+    id,
+    createdAt: confirmation.submittedAt,
+    updatedAt: confirmation.submittedAt,
+    job: {
+      title: confirmation.title,
+      company: confirmation.company,
+      location: "",
+      description: "",
+      sourceUrl: confirmation.sourceUrl,
+    },
+    // A confirmation carries no resume data — this entry exists so the
+    // submission is tracked, and the empty fields are honest about that.
+    profile: {
+      contact: { firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "", postalCode: "", country: "", linkedin: "", website: "" },
+      summary: "", skills: [], experience: [], education: [], projects: [], certifications: [],
+    },
+    tailoredSummary: "",
+    tailoredSkills: [],
+    tailoredBullets: [],
+    coverLetter: "",
+    atsScore: 0,
+    atsBreakdown: { totalKeywords: 0, matchedKeywords: 0, matched: [], missing: [], score: 0, integrityFlags: [] },
+    status: "applied",
+    statusHistory: [{ status: "applied", at: confirmation.submittedAt }],
+    notes: `Auto-logged from a Workday confirmation page${confirmation.jobId ? ` (Job ID: ${confirmation.jobId})` : ""}. Not tailored in Workdayz.`,
+  };
+  return { apps: [...apps, created], action: "created", applicationId: id };
+}
+
+/**
+ * Applies a batch, threading the list through so two confirmations for the
+ * same role in one drain can't create two entries.
+ */
+export function applyConfirmations(
+  apps: TailoredApplication[],
+  confirmations: ApplicationConfirmation[],
+  makeId?: () => string,
+): { apps: TailoredApplication[]; outcomes: Array<ConfirmationOutcome & { key: string }> } {
+  let current = apps;
+  const outcomes: Array<ConfirmationOutcome & { key: string }> = [];
+  for (const confirmation of confirmations) {
+    const result = applyConfirmation(current, confirmation, makeId);
+    current = result.apps;
+    outcomes.push({ ...result, key: confirmation.key });
+  }
+  return { apps: current, outcomes };
+}
+
 // --- Item 49: duplicate detection -------------------------------------------
 export function duplicateIds(apps: TailoredApplication[]): Set<string> {
   const dupes = new Set<string>();

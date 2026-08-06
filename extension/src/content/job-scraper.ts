@@ -8,7 +8,9 @@ function textAll(selector: string): string[] {
   return Array.from(document.querySelectorAll(selector)).map((el) => el.textContent?.trim() ?? "").filter(Boolean);
 }
 
-function guessCompanyName(): string {
+/** Exported for confirmation.ts: a confirmation page rarely names the company,
+ * but the hostname always does. */
+export function guessCompanyName(): string {
   const meta = document.querySelector('meta[property="og:site_name"]')?.getAttribute("content");
   if (meta) return meta.trim();
 

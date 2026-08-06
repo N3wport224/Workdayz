@@ -18,6 +18,10 @@ const MESSAGE_TYPES = {
   syncStatus: "WORKDAYZ_SYNC_STATUS",
   profileStored: "WORKDAYZ_PROFILE_STORED",
   fillCompleted: "WORKDAYZ_FILL_COMPLETED",
+  applicationConfirmed: "WORKDAYZ_APPLICATION_CONFIRMED",
+  requestPendingConfirmations: "WORKDAYZ_REQUEST_PENDING_CONFIRMATIONS",
+  pendingConfirmations: "WORKDAYZ_PENDING_CONFIRMATIONS",
+  confirmationsAcknowledged: "WORKDAYZ_CONFIRMATIONS_ACKNOWLEDGED",
 } as const;
 
 /** Items 74/77: what the extension currently holds. */
@@ -74,6 +78,14 @@ if (typeof window !== "undefined") {
       case MESSAGE_TYPES.fillCompleted:
         _fillCompletedListeners.forEach((cb) => cb(data.payload as { count: number; stillRequired: number }));
         break;
+      case MESSAGE_TYPES.applicationConfirmed:
+        _confirmationListeners.forEach((cb) => cb([data.payload as ApplicationConfirmation]));
+        break;
+      case MESSAGE_TYPES.pendingConfirmations:
+        _confirmationListeners.forEach((cb) =>
+          cb(Array.isArray(data.payload) ? (data.payload as ApplicationConfirmation[]) : []),
+        );
+        break;
     }
   });
 }
@@ -82,6 +94,52 @@ if (typeof window !== "undefined") {
 let _syncStatusListeners: Array<(s: ExtensionSyncStatus | null) => void> = [];
 let _profileStoredListeners: Array<(previousSyncedAt: string | null) => void> = [];
 let _fillCompletedListeners: Array<(r: { count: number; stillRequired: number }) => void> = [];
+let _confirmationListeners: Array<(c: ApplicationConfirmation[]) => void> = [];
+
+/** A submitted application detected on a Workday confirmation page. Mirrors
+ * extension/src/content/confirmation.ts's ConfirmationEvent. */
+export interface ApplicationConfirmation {
+  key: string;
+  company: string;
+  title: string;
+  jobId: string;
+  submittedAt: string;
+  sourceUrl: string;
+  hostname: string;
+  via: "url" | "dom";
+  evidence: string;
+}
+
+/**
+ * Fires for confirmations, whether relayed live or drained from the queue.
+ * Always receives an array so both paths look identical to the caller.
+ */
+export function onApplicationConfirmed(cb: (c: ApplicationConfirmation[]) => void): () => void {
+  _confirmationListeners.push(cb);
+  return () => {
+    _confirmationListeners = _confirmationListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Asks for confirmations logged while the web app was closed. */
+export function requestPendingConfirmations(): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.requestPendingConfirmations },
+    window.location.origin,
+  );
+}
+
+/**
+ * Tells the extension which confirmations were actually written to the tracker,
+ * so it can drop just those. Unacknowledged ones stay queued — a failed write
+ * must not silently lose a submission.
+ */
+export function acknowledgeConfirmations(keys: string[]): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.confirmationsAcknowledged, payload: { keys } },
+    window.location.origin,
+  );
+}
 
 /** Items 74/77: ask the extension what it currently holds; the answer arrives
  * via onSyncStatus. */
