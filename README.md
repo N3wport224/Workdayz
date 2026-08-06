@@ -114,7 +114,10 @@ track its status over time.
 - **Multiple profiles** — keep separate resume profiles (e.g. analyst vs.
   ops roles) and switch between them; plus a demo profile to try the tool
   before importing your real resume, and a one-click "delete all my data"
-  wipe.
+  wipe. Saving syncs *every* named profile to the extension, and the on-page
+  widget shows a picker so you choose which resume fills the form without
+  going back to the web app (the picker appears only once you have two or
+  more profiles).
 - **Projects section** — first-class projects on the profile, in tailoring
   input, and on the rendered resume PDF.
 - **Fetch posting by URL** — paste a job posting URL and the app extracts
@@ -237,6 +240,56 @@ runs the following health checks:
 Run the audit from any context to get a version‑stamped `AuditReport` with
 pass/fail/warn per check. The report contains no personal data — only
 extension health metadata.
+
+## Security audit
+
+A code-review pass found and fixed four real issues. Each has a regression
+test that was verified to fail against the original code before the fix.
+
+- **XSS in the on-page widget** (`extension/src/content/widget.ts`,
+  `workday.ts`). The extension runs on *every* `*.myworkdayjobs.com` tenant,
+  so field labels and form values are attacker-controllable text. Three sinks
+  interpolated that text into `innerHTML` unescaped — a crafted field value
+  like `<img src=x onerror=…>` executed script in the content script's
+  context. Fixed with a shared `escapeHtml()` applied at every sink; the
+  e2e suite proves raw interpolation creates a live element and escaped
+  interpolation does not.
+- **SSRF allowlist bypass** in the job-fetch API route
+  (`web/app/api/fetch-job/route.ts`). `isAllowed()` used
+  `hostname.endsWith(host)`, which any domain merely *ending* in an allowed
+  string satisfied — `attackermyworkdayjobs.com` passed. Now requires an
+  exact host or a real dot-delimited subdomain, plus a protocol check.
+- **Bridge-origin trust gap.** The web-app bridge trusts any postMessage
+  claiming `{source: "workdayz-web"}` on the page it's injected into, and
+  `myworkdayjobs.com` is already a host permission — so connecting the
+  extension to a Workday URL by mistake would let that tenant's own page
+  script forge profile-store messages. `isWorkdayDomain()` now blocks this
+  at three layers (popup, script registration, and the message handler).
+- **Backup crypto.** Encrypted-backup PBKDF2 iterations raised from 310k to
+  600k (current OWASP guidance). The count travels *inside* each backup
+  rather than being a shared constant, so backups saved at the old count
+  still decrypt — changing the constant alone would have silently broken
+  every backup already made.
+
+## Accessibility
+
+Every page is audited with `axe-core` in CI (`npm run test:a11y`), and the
+build fails on critical violations. All five pages currently report **0
+critical and 0 serious** violations, including color contrast.
+
+One root cause worth noting: a `dark:`-variant text color was never
+activating, because the app has no light/dark toggle wired to `<html>` — that
+element's color silently depended on the *browser's* default color scheme
+instead of the app's actual (always-dark) theme.
+
+## Tests & CI
+
+GitHub Actions runs both halves on every push (`.github/workflows/ci.yml`):
+
+| Job | Steps |
+|-----|-------|
+| **Web app** | `tsc --noEmit`, `eslint`, 76 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
+| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard |
 
 ## Safety notes
 
