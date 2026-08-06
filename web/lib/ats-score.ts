@@ -22,15 +22,19 @@ const ALIASES: Record<string, string[]> = {
   iac: ["infrastructure as code", "infrastructure-as-code"],
 };
 
-function normalize(s: string): string {
+// Exported so rank-bullets.ts scores against the SAME keyword engine the ATS
+// score uses. A second normalizer/alias table would drift, and a bullet ranked
+// "most relevant" by one engine while scoring poorly on the other is worse
+// than no ranking at all.
+export function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9+#._/-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
   return normalize(text).split(/\s+/).filter(Boolean);
 }
 
-function expandTerms(terms: string[]): Set<string> {
+export function expandTerms(terms: string[]): Set<string> {
   const set = new Set<string>();
   for (const term of terms) {
     set.add(normalize(term));
@@ -40,7 +44,7 @@ function expandTerms(terms: string[]): Set<string> {
   return set;
 }
 
-function extractKeywords(text: string): { term: string; weight: number }[] {
+export function extractKeywords(text: string): { term: string; weight: number }[] {
   const freq = new Map<string, { count: number; weight: number }>();
 
   // Multi-word phrases (1-4 words)

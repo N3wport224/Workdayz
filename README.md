@@ -250,6 +250,42 @@ Run the audit from any context to get a version‑stamped `AuditReport` with
 pass/fail/warn per check. The report contains no personal data — only
 extension health metadata.
 
+## Bullet ranking & standalone cover letters
+
+Two AI-engine pieces that run independently of a full tailoring pass.
+
+**Bullet ranking** (`web/lib/rank-bullets.ts`, `POST /api/rank-bullets`) picks
+which of a role's bullets to actually show for a given posting.
+
+- **Deterministic by default** — keyword overlap, free and instant, no API key
+  needed. It scores against the *same* engine as `ats-score.ts` (same
+  normalizer, same alias table, same title-doubling), so a bullet it calls
+  "most relevant" is one that genuinely moves the ATS score.
+- **Length-normalized**, so padding a bullet doesn't win. **Stable**, so equal
+  scores keep your original order and re-running isn't a diff.
+- **`minKeep` floor** — a role showing zero bullets reads as a gap in your
+  history, so relevance alone can't empty one out.
+- **Semantic refinement is opt-in** (`semantic: true`). It only ever
+  *reorders*: the model receives bullets and returns indices, so it cannot
+  introduce text, and any index it invents is discarded. Every failure path —
+  no key, API error, malformed response, rate limit — degrades to the
+  deterministic ranking instead of erroring.
+
+One characteristic worth knowing: `extractKeywords` emits every 1–4 word
+window, so a bullet echoing one long phrase from the posting matches the phrase
+*and* all its sub-grams. Ranking collapses those to maximal terms (keeping the
+highest weight in each group, so a title keyword nested inside a longer phrase
+doesn't lose its 2× bonus). Without that collapse, phrase-echoing bullets
+outscored genuinely central ones by ~2.7×.
+
+**Standalone cover letters** (`web/lib/cover-letter.ts`,
+`POST /api/cover-letter`) generate a letter to a hard character budget,
+defaulting to Workday's common 4,000-character field cap. The budget is
+enforced twice — as an instruction to the model, and as a deterministic
+post-trim that cuts at a paragraph boundary, then a sentence boundary, then a
+word boundary, but never mid-word. The response reports `charCount`,
+`remaining`, and whether the trim had to fire.
+
 ## Security audit
 
 A code-review pass found and fixed four real issues. Each has a regression
@@ -297,7 +333,7 @@ GitHub Actions runs both halves on every push (`.github/workflows/ci.yml`):
 
 | Job | Steps |
 |-----|-------|
-| **Web app** | `tsc --noEmit`, `eslint`, 76 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
+| **Web app** | `tsc --noEmit`, `eslint`, 176 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
 | **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite |
 
 ## Safety notes
