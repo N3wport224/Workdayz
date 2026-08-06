@@ -1,4 +1,13 @@
 import { STORAGE_KEYS, isWorkdayDomain, type ApplicationConfirmation, type AutofillPackage, type BaseProfile, type JobPosting, type RuntimeMessage } from "../types";
+import {
+  BACKUP_ALARM_NAME,
+  auditBackups,
+  loadSnapshots,
+  runBackupAudit,
+  scheduleBackupAlarm,
+  setBackupSettings,
+  storeSnapshot,
+} from "./backup-alarm";
 
 /** Same window as content/confirmation.ts's DEDUPE_WINDOW_MS. Duplicated as a
  * literal because the background worker and content scripts are separate
@@ -42,6 +51,22 @@ chrome.runtime.onInstalled.addListener(async () => {
     const granted = await chrome.permissions.contains({ origins: [`${origin.replace(/\/$/, "")}/*`] });
     if (granted) await registerBridgeForOrigin(origin);
   }
+  await scheduleBackupAlarm();
+});
+
+// Chrome persists alarms across service-worker restarts, but a worker that was
+// killed and revived still needs its listener re-attached — and re-creating the
+// alarm by name is idempotent, so this can't stack duplicates.
+chrome.runtime.onStartup?.addListener(() => {
+  void scheduleBackupAlarm();
+});
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name !== BACKUP_ALARM_NAME) return;
+  // Auditing only — the tracker data lives in the web app's localStorage and is
+  // unreachable from here, so there is nothing to snapshot unattended. See
+  // backup-alarm.ts for the full reasoning.
+  void runBackupAudit();
 });
 
 chrome.runtime.onMessage.addListener((message: RuntimeMessage, sender, sendResponse) => {
@@ -233,6 +258,34 @@ export async function handleMessage(message: RuntimeMessage, sender: chrome.runt
       const remaining = queue.filter((c) => !acked.has(c.key));
       await chrome.storage.local.set({ [STORAGE_KEYS.pendingConfirmations]: remaining });
       return { ok: true, remaining: remaining.length };
+    }
+    case "STORE_BACKUP_SNAPSHOT": {
+      const result = await storeSnapshot(message.payload);
+      return result;
+    }
+    case "GET_BACKUP_STATUS": {
+      return await auditBackups();
+    }
+    case "GET_BACKUP_SNAPSHOT": {
+      // Returns a payload for restore. Defaults to the newest; an explicit
+      // createdAt lets the user fall back to an older one when the newest was
+      // written from already-corrupted data.
+      const snapshots = await loadSnapshots();
+      if (!snapshots.length) return { snapshot: null };
+      const wanted = message.createdAt
+        ? snapshots.find((s) => s.createdAt === message.createdAt)
+        : snapshots[snapshots.length - 1];
+      return { snapshot: wanted ?? null };
+    }
+    case "SET_BACKUP_SETTINGS": {
+      const settings = await setBackupSettings({
+        enabled: message.enabled,
+        intervalDays: message.intervalDays,
+      });
+      return { ok: true, settings };
+    }
+    case "RUN_BACKUP_AUDIT": {
+      return await runBackupAudit();
     }
     case "OPEN_APPLY_TAB": {
       const stored = await chrome.storage.local.get(STORAGE_KEYS.webAppOrigin);

@@ -250,6 +250,52 @@ Run the audit from any context to get a version‑stamped `AuditReport` with
 pass/fail/warn per check. The report contains no personal data — only
 extension health metadata.
 
+## Backups: two clocks, one passphrase
+
+Two independent copies, because they fail differently:
+
+| | Survives | Doesn't survive |
+|---|---|---|
+| **File download** | losing this browser entirely | you never clicking download |
+| **Extension snapshot** | the tracker's `localStorage` being cleared | the browser being removed |
+
+The Settings page nudges on the **download** clock (default every 7 days,
+escalating at 14), and stays silent when the tracker is empty or a recent
+download exists. A `chrome.alarms` job audits snapshot freshness on the same
+cadence and badges the toolbar when they age out — the only signal available
+with no tab open.
+
+**Why the web app encrypts and the extension doesn't.** Both halves use the
+same AES-256-GCM + PBKDF2-600k from `crypto-backup.ts`, but encryption happens
+web-side and the extension stores only ciphertext. Two reasons that rule out
+encrypting in the background worker:
+
+1. **The data isn't reachable from there.** The application tracker lives in the
+   web app's `localStorage`, which no extension surface can read. An alarm
+   firing at 3am with no tab open has nothing to snapshot.
+2. **Unattended AES-GCM has nowhere safe to keep a passphrase.** Storing one (or
+   a derived key) in `chrome.storage.local` — next to the ciphertext — means
+   anything that can read the backup can read the key. That protects against
+   nothing while *claiming* AES-256-GCM protection, which is worse than being
+   plainly unencrypted.
+
+So the user supplies a passphrase at a moment they're present, the web app
+encrypts, and the extension receives an opaque envelope. **No passphrase or
+derived key is ever written to extension storage** — there's a test asserting
+exactly that.
+
+Other properties worth knowing:
+
+- **Three snapshots are kept, not one.** If the newest was written from an
+  already-corrupted `localStorage`, the previous one is the only way back.
+- **Oversized snapshots are refused, not squeezed in.** `chrome.storage.local`
+  is ~5MB shared with your profile, answer memory, and rules; a huge snapshot
+  would evict working state.
+- **Status checks return metadata only** — counts, timestamps, byte size — never
+  the payload, so a status call can't leak ciphertext into a page.
+- **Clock skew clamps to zero.** A future-stamped snapshot reads as fresh rather
+  than as a negative age that would look fresh forever.
+
 ## Confirmation auto-sync
 
 When you actually submit an application, the extension notices and the tracker
@@ -367,8 +413,8 @@ GitHub Actions runs both halves on every push (`.github/workflows/ci.yml`):
 
 | Job | Steps |
 |-----|-------|
-| **Web app** | `tsc --noEmit`, `eslint`, 209 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
-| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite, confirmation detection, confirmation sync |
+| **Web app** | `tsc --noEmit`, `eslint`, 244 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
+| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite, confirmation detection, confirmation sync, backup alarm |
 
 ## Safety notes
 

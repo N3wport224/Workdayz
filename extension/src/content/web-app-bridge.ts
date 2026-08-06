@@ -1,4 +1,4 @@
-import { MESSAGE_TYPES, type AutofillPackage, type BaseProfile } from "../types";
+import { MESSAGE_TYPES, type AutofillPackage, type BackupSnapshot, type BaseProfile } from "../types";
 
 // Runs only on the web app's origin (dynamically registered by
 // background.ts once the user connects it from the popup). Relays
@@ -62,6 +62,39 @@ async function handle(data: { type?: string; payload?: unknown }) {
         type: "STORE_PROFILE_LIST",
         payload: data.payload as { profiles: Record<string, BaseProfile>; activeName: string },
       });
+      break;
+    }
+    case MESSAGE_TYPES.backupSnapshot: {
+      // The payload arrives already encrypted when the user set a passphrase —
+      // this side never holds one and never decrypts. See background/backup-alarm.ts.
+      const response = await chrome.runtime.sendMessage({
+        type: "STORE_BACKUP_SNAPSHOT",
+        payload: data.payload as BackupSnapshot,
+      });
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.backupSnapshotStored, payload: response ?? { ok: false } },
+        window.location.origin,
+      );
+      break;
+    }
+    case MESSAGE_TYPES.requestBackupStatus: {
+      const status = await chrome.runtime.sendMessage({ type: "GET_BACKUP_STATUS" });
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.backupStatus, payload: status ?? null },
+        window.location.origin,
+      );
+      break;
+    }
+    case MESSAGE_TYPES.requestBackupSnapshot: {
+      const createdAt = (data.payload as { createdAt?: unknown })?.createdAt;
+      const response = await chrome.runtime.sendMessage({
+        type: "GET_BACKUP_SNAPSHOT",
+        createdAt: typeof createdAt === "string" ? createdAt : undefined,
+      });
+      window.postMessage(
+        { source: "workdayz-extension", type: MESSAGE_TYPES.backupSnapshotPayload, payload: response?.snapshot ?? null },
+        window.location.origin,
+      );
       break;
     }
     case MESSAGE_TYPES.requestPendingConfirmations: {

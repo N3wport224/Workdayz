@@ -22,6 +22,12 @@ const MESSAGE_TYPES = {
   requestPendingConfirmations: "WORKDAYZ_REQUEST_PENDING_CONFIRMATIONS",
   pendingConfirmations: "WORKDAYZ_PENDING_CONFIRMATIONS",
   confirmationsAcknowledged: "WORKDAYZ_CONFIRMATIONS_ACKNOWLEDGED",
+  backupSnapshot: "WORKDAYZ_BACKUP_SNAPSHOT",
+  backupSnapshotStored: "WORKDAYZ_BACKUP_SNAPSHOT_STORED",
+  requestBackupStatus: "WORKDAYZ_REQUEST_BACKUP_STATUS",
+  backupStatus: "WORKDAYZ_BACKUP_STATUS",
+  requestBackupSnapshot: "WORKDAYZ_REQUEST_BACKUP_SNAPSHOT",
+  backupSnapshotPayload: "WORKDAYZ_BACKUP_SNAPSHOT_PAYLOAD",
 } as const;
 
 /** Items 74/77: what the extension currently holds. */
@@ -86,6 +92,15 @@ if (typeof window !== "undefined") {
           cb(Array.isArray(data.payload) ? (data.payload as ApplicationConfirmation[]) : []),
         );
         break;
+      case MESSAGE_TYPES.backupStatus:
+        _backupStatusListeners.forEach((cb) => cb(data.payload as ExtensionBackupStatus | null));
+        break;
+      case MESSAGE_TYPES.backupSnapshotStored:
+        _snapshotStoredListeners.forEach((cb) => cb(data.payload as SnapshotStoreResult));
+        break;
+      case MESSAGE_TYPES.backupSnapshotPayload:
+        _snapshotPayloadListeners.forEach((cb) => cb(data.payload as StoredSnapshot | null));
+        break;
     }
   });
 }
@@ -118,6 +133,90 @@ export function onApplicationConfirmed(cb: (c: ApplicationConfirmation[]) => voi
   _confirmationListeners.push(cb);
   return () => {
     _confirmationListeners = _confirmationListeners.filter((l) => l !== cb);
+  };
+}
+
+// --- Backup snapshots -------------------------------------------------------
+
+let _backupStatusListeners: Array<(s: ExtensionBackupStatus | null) => void> = [];
+let _snapshotStoredListeners: Array<(r: SnapshotStoreResult) => void> = [];
+let _snapshotPayloadListeners: Array<(s: StoredSnapshot | null) => void> = [];
+
+export interface ExtensionBackupStatus {
+  enabled: boolean;
+  intervalDays: number;
+  lastSnapshotAt: string | null;
+  ageDays: number | null;
+  stale: boolean;
+  snapshotCount: number;
+  snapshots: Array<{ createdAt: string; encrypted: boolean; applications: number; profiles: number; bytes: number }>;
+}
+
+export interface SnapshotStoreResult {
+  ok: boolean;
+  reason?: "too-large" | "empty";
+  kept?: number;
+  bytes?: number;
+}
+
+export interface StoredSnapshot {
+  version: 1;
+  createdAt: string;
+  encrypted: boolean;
+  payload: string;
+  applications: number;
+  profiles: number;
+}
+
+/**
+ * Pushes a backup to the extension for durable off-localStorage storage.
+ *
+ * `payload` must already be the final JSON string — encrypted here, web-side,
+ * where the user is present to supply a passphrase. The extension never holds a
+ * passphrase and never decrypts; see extension/src/background/backup-alarm.ts.
+ */
+export function sendBackupSnapshot(snapshot: StoredSnapshot): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.backupSnapshot, payload: snapshot },
+    window.location.origin,
+  );
+}
+
+export function onBackupSnapshotStored(cb: (r: SnapshotStoreResult) => void): () => void {
+  _snapshotStoredListeners.push(cb);
+  return () => {
+    _snapshotStoredListeners = _snapshotStoredListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Asks how fresh the extension's stored snapshots are (metadata only). */
+export function requestBackupStatus(): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.requestBackupStatus },
+    window.location.origin,
+  );
+}
+
+export function onBackupStatus(cb: (s: ExtensionBackupStatus | null) => void): () => void {
+  _backupStatusListeners.push(cb);
+  return () => {
+    _backupStatusListeners = _backupStatusListeners.filter((l) => l !== cb);
+  };
+}
+
+/** Requests a stored snapshot's payload back, to restore from it. Omit
+ * `createdAt` for the newest. */
+export function requestBackupSnapshot(createdAt?: string): void {
+  window.postMessage(
+    { source: "workdayz-web", type: MESSAGE_TYPES.requestBackupSnapshot, payload: { createdAt } },
+    window.location.origin,
+  );
+}
+
+export function onBackupSnapshotPayload(cb: (s: StoredSnapshot | null) => void): () => void {
+  _snapshotPayloadListeners.push(cb);
+  return () => {
+    _snapshotPayloadListeners = _snapshotPayloadListeners.filter((l) => l !== cb);
   };
 }
 

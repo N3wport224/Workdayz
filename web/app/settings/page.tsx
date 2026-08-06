@@ -1,10 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { loadSettings, saveSettings, exportAllData, importAllData, wipeAllData } from "@/lib/storage";
+import { useEffect, useRef, useState } from "react";
+import {
+  loadSettings,
+  saveSettings,
+  exportAllData,
+  importAllData,
+  wipeAllData,
+  recordBackupDownload,
+  loadLastBackupDownload,
+  loadApplications,
+  listProfileNames,
+} from "@/lib/storage";
 import type { ExtensionSettings } from "@/lib/storage";
 import { buildFullBackup, isFullBackup, restoreFullBackup } from "@/lib/full-backup";
 import { encryptBackup, decryptBackup, isEncryptedBackup } from "@/lib/crypto-backup";
+import { backupFilename, backupNudge, type BackupNudge } from "@/lib/backup-schedule";
+import {
+  getBridgeStatus,
+  onBackupSnapshotPayload,
+  onBackupSnapshotStored,
+  onBackupStatus,
+  requestBackupSnapshot,
+  requestBackupStatus,
+  sendBackupSnapshot,
+  type ExtensionBackupStatus,
+} from "@/lib/extension-bridge";
 import { summarizeCosts, type CostSummary } from "@/lib/cost-log";
 
 export default function SettingsPage() {
@@ -13,6 +34,32 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [encryptedImport, setEncryptedImport] = useState("");
+
+  // The bridge listeners are registered in a mount-only effect, so a closure
+  // over `passphrase` would be frozen at "" forever and every restore would
+  // fail to decrypt. A ref stays current without re-subscribing on each keystroke.
+  const passphraseRef = useRef(passphrase);
+  useEffect(() => {
+    passphraseRef.current = passphrase;
+  }, [passphrase]);
+
+  // Backup scheduling state
+  const [nudge, setNudge] = useState<BackupNudge | null>(null);
+  const [extBackup, setExtBackup] = useState<ExtensionBackupStatus | null>(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+
+  /** Recomputes the nudge from current data. Called on mount and after any
+   * action that changes a backup clock, so the banner never lies. */
+  const refreshNudge = (lastSnapshotAt?: string | null) => {
+    setNudge(
+      backupNudge({
+        lastDownloadAt: loadLastBackupDownload(),
+        lastSnapshotAt: lastSnapshotAt ?? extBackup?.lastSnapshotAt ?? null,
+        applicationCount: loadApplications().length,
+        profileCount: listProfileNames().length,
+      }),
+    );
+  };
 
   /** Item 10: passphrase-encrypted full backup (AES-GCM via crypto-backup). */
   const handleEncryptedExport = async () => {
@@ -25,13 +72,62 @@ export default function SettingsPage() {
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `workdayz-backup-${new Date().toISOString().slice(0, 10)}.encrypted.json`;
+      a.download = backupFilename(new Date(), true);
       a.click();
       URL.revokeObjectURL(a.href);
+      // Only a real file on disk resets the download clock.
+      recordBackupDownload();
+      refreshNudge();
       setMessage("Encrypted backup downloaded. Keep the passphrase — it cannot be recovered.");
     } catch {
       setMessage("Encryption failed — your browser may not support WebCrypto here.");
     }
+  };
+
+  /**
+   * Pushes an encrypted snapshot to the extension. Encryption happens HERE,
+   * because this is where the user is present to supply a passphrase — the
+   * extension never holds one. Storing it beside the ciphertext would mean the
+   * encryption protected nothing.
+   */
+  const handlePushSnapshot = async () => {
+    if (getBridgeStatus() !== "detected") {
+      setMessage("Extension not detected — connect it from the extension popup first.");
+      return;
+    }
+    if (passphrase.length < 8) {
+      setMessage("Enter a passphrase (8+ characters) above — the snapshot is encrypted before it leaves this page.");
+      return;
+    }
+    try {
+      const plain = buildFullBackup();
+      const encrypted = await encryptBackup(JSON.stringify(plain), passphrase);
+      sendBackupSnapshot({
+        version: 1,
+        createdAt: new Date().toISOString(),
+        encrypted: true,
+        payload: JSON.stringify(encrypted),
+        applications: loadApplications().length,
+        profiles: listProfileNames().length,
+      });
+      setMessage("Encrypted snapshot sent to the extension…");
+    } catch {
+      setMessage("Couldn't build the snapshot — your browser may not support WebCrypto here.");
+    }
+  };
+
+  /** Pulls a stored snapshot back and restores it. Needs the same passphrase. */
+  const handleRestoreFromExtension = (createdAt?: string) => {
+    if (getBridgeStatus() !== "detected") {
+      setMessage("Extension not detected — connect it from the extension popup first.");
+      return;
+    }
+    if (passphrase.length < 8) {
+      setMessage("Enter the passphrase you used for that snapshot.");
+      return;
+    }
+    setMessage("Fetching the snapshot from the extension…");
+    requestBackupSnapshot(createdAt);
   };
 
   const handleEncryptedImport = async () => {
@@ -72,6 +168,75 @@ export default function SettingsPage() {
       Boolean(loaded.anthropicKey && loaded.keySavedAt) &&
         Date.now() - new Date(loaded.keySavedAt!).getTime() > 90 * 86_400_000,
     );
+
+    // Backup nudge. Computed from localStorage first so the banner shows even
+    // with no extension installed, then refined once the extension reports.
+    setNudge(
+      backupNudge({
+        lastDownloadAt: loadLastBackupDownload(),
+        lastSnapshotAt: null,
+        applicationCount: loadApplications().length,
+        profileCount: listProfileNames().length,
+      }),
+    );
+
+    const offStatus = onBackupStatus((status) => {
+      setExtBackup(status);
+      setNudge(
+        backupNudge({
+          lastDownloadAt: loadLastBackupDownload(),
+          lastSnapshotAt: status?.lastSnapshotAt ?? null,
+          applicationCount: loadApplications().length,
+          profileCount: listProfileNames().length,
+          intervalDays: status?.intervalDays,
+        }),
+      );
+    });
+
+    const offStored = onBackupSnapshotStored((result) => {
+      if (result?.ok) {
+        setMessage(`Snapshot stored in the extension (${result.kept} kept, ${Math.round((result.bytes ?? 0) / 1024)} KB).`);
+        requestBackupStatus();
+      } else if (result?.reason === "too-large") {
+        setMessage(
+          `Snapshot too large for extension storage (${Math.round((result.bytes ?? 0) / 1024)} KB). Download a file backup instead.`,
+        );
+      } else {
+        setMessage("The extension refused the snapshot — nothing was stored.");
+      }
+    });
+
+    // Restore path: the payload comes back encrypted and is decrypted here.
+    const offPayload = onBackupSnapshotPayload(async (snapshot) => {
+      if (!snapshot) {
+        setMessage("The extension has no stored snapshot yet.");
+        return;
+      }
+      try {
+        const parsed = JSON.parse(snapshot.payload);
+        const plaintext = snapshot.encrypted && isEncryptedBackup(parsed)
+          ? await decryptBackup(parsed, passphraseRef.current)
+          : snapshot.payload;
+        const backup = JSON.parse(plaintext);
+        if (!isFullBackup(backup)) {
+          setMessage("That snapshot didn't contain a Workdayz backup.");
+          return;
+        }
+        const restored = restoreFullBackup(backup);
+        setMessage(`Restored ${restored} data item(s) from the extension snapshot. Reloading…`);
+        setTimeout(() => window.location.reload(), 1200);
+      } catch {
+        setMessage("Couldn't decrypt that snapshot — wrong passphrase, or it was stored with a different one.");
+      }
+    });
+
+    const askExtension = setTimeout(requestBackupStatus, 800); // let the bridge attach
+    return () => {
+      offStatus();
+      offStored();
+      offPayload();
+      clearTimeout(askExtension);
+    };
   }, []);
 
   const save = () => {
@@ -109,6 +274,36 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">⚙️ Settings</h1>
+
+      {/* Backup nudge. Dismissible, and silent when the tracker is empty or a
+          recent download exists — a banner that always shows gets ignored. */}
+      {nudge && nudge.level !== "none" && !nudgeDismissed && (
+        <div
+          role="status"
+          className={`card border ${
+            nudge.level === "overdue" ? "border-amber-500/60 bg-amber-500/5" : "border-gray-600"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold mb-1">
+                {nudge.level === "overdue" ? "⚠️ Back up your job search" : "💾 Backup reminder"}
+              </h2>
+              <p className="text-sm text-gray-300">{nudge.message}</p>
+              <p className="text-sm text-gray-400 mt-2">
+                Set a passphrase below, then download — it takes one click and the file works on any machine.
+              </p>
+            </div>
+            <button
+              onClick={() => setNudgeDismissed(true)}
+              className="btn btn-secondary btn-sm shrink-0"
+              aria-label="Dismiss the backup reminder"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* API Key */}
       <div className="card">
@@ -256,6 +451,58 @@ export default function SettingsPage() {
               🔓 Decrypt &amp; restore
             </button>
           </div>
+        </div>
+
+        {/* Extension-held snapshots: a second copy outside localStorage */}
+        <div className="mt-6 pt-4 border-t border-gray-700">
+          <h3 className="font-medium mb-2">🗄 Snapshot in the extension</h3>
+          <p className="text-sm text-gray-400 mb-3">
+            Stores an encrypted copy in the extension. The extension&apos;s storage is separate
+            from this page&apos;s, so a snapshot survives your browser data being cleared — but not
+            the browser itself being removed, which is what the file download above is for.
+            Encryption happens here, using the passphrase above; the extension never receives it.
+          </p>
+          {extBackup ? (
+            <p className="text-sm text-gray-400 mb-3">
+              {extBackup.snapshotCount === 0
+                ? "No snapshot stored yet."
+                : `${extBackup.snapshotCount} snapshot(s) held, newest ${
+                    extBackup.ageDays === null ? "unknown" : `${extBackup.ageDays} day(s) old`
+                  }. Reminder cadence: every ${extBackup.intervalDays} day(s).`}
+            </p>
+          ) : (
+            <p className="text-sm text-gray-500 mb-3">Extension not connected — snapshots unavailable.</p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={handlePushSnapshot} disabled={passphrase.length < 8} className="btn btn-secondary">
+              ⬆ Send encrypted snapshot
+            </button>
+            <button
+              onClick={() => handleRestoreFromExtension()}
+              disabled={passphrase.length < 8 || !extBackup?.snapshotCount}
+              className="btn btn-secondary"
+            >
+              ⬇ Restore newest snapshot
+            </button>
+          </div>
+          {extBackup && extBackup.snapshots.length > 1 && (
+            <div className="mt-3">
+              <label className="text-gray-400">Or restore an older one</label>
+              <div className="flex flex-col gap-1 mt-1">
+                {[...extBackup.snapshots].reverse().slice(1).map((s) => (
+                  <button
+                    key={s.createdAt}
+                    onClick={() => handleRestoreFromExtension(s.createdAt)}
+                    disabled={passphrase.length < 8}
+                    className="btn btn-secondary btn-sm text-left"
+                  >
+                    {new Date(s.createdAt).toLocaleString()} — {s.applications} application(s),{" "}
+                    {s.profiles} profile(s){s.encrypted ? "" : " (unencrypted)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

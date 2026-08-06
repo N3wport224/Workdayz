@@ -16,7 +16,8 @@
     "test:confirmation": "node test/confirmation.test.mjs",
     "test:confirmation-sync": "node test/confirmation-sync.test.mjs",
     "package": "npm run build && cd dist && zip -qr ../workdayz-extension.zip . -x '*.map' && cd .. && echo 'wrote workdayz-extension.zip'",
-    "generate-icons": "node scripts/generate-icons.mjs"
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "test:backup": "node test/backup-alarm.test.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.280",

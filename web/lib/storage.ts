@@ -160,6 +160,27 @@ export function deleteNamedProfile(name: string): boolean {
   }
 }
 
+// --- Backup timestamps ------------------------------------------------------
+// Tracked separately from the extension snapshot: a file on disk is the only
+// backup that survives losing this browser, so it gets its own clock.
+const LAST_BACKUP_DOWNLOAD_KEY = "workdayz-last-backup-download";
+
+export function recordBackupDownload(at: string = new Date().toISOString()): void {
+  try {
+    localStorage.setItem(LAST_BACKUP_DOWNLOAD_KEY, at);
+  } catch (e) {
+    console.error("Failed to record backup download:", e);
+  }
+}
+
+export function loadLastBackupDownload(): string | null {
+  try {
+    return localStorage.getItem(LAST_BACKUP_DOWNLOAD_KEY);
+  } catch {
+    return null;
+  }
+}
+
 // Applications
 export function saveApplications(apps: TailoredApplication[]): void {
   try {

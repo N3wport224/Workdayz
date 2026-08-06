@@ -176,6 +176,16 @@ export const STORAGE_KEYS = {
    * because a submission usually happens with the web app closed, and a
    * fire-and-forget relay would lose it entirely. */
   pendingConfirmations: "workdayz.pendingConfirmations",
+  /** BackupSnapshot[] — backups pushed by the web app, newest last. Stored here
+   * because chrome.storage.local is a separate store from the web app's
+   * localStorage, so these survive a localStorage wipe. */
+  backupSnapshots: "workdayz.backupSnapshots",
+  /** ISO timestamp of the newest snapshot, for cheap staleness checks. */
+  lastSnapshotAt: "workdayz.lastSnapshotAt",
+  /** { enabled, intervalDays } — the scheduled-audit cadence. */
+  backupSettings: "workdayz.backupSettings",
+  /** { at, stale } — result of the last alarm-driven audit. */
+  lastBackupAudit: "workdayz.lastBackupAudit",
   /** Item 58 — Record<hostname, string[]>: the form-label fingerprint from
    * the last successful fill, to detect tenant DOM changes. */
   tenantFingerprints: "workdayz.tenantFingerprints",
@@ -214,6 +224,15 @@ export const MESSAGE_TYPES = {
   pendingConfirmations: "WORKDAYZ_PENDING_CONFIRMATIONS",
   /** Web app reports which queued confirmations it has committed to the tracker. */
   confirmationsAcknowledged: "WORKDAYZ_CONFIRMATIONS_ACKNOWLEDGED",
+  /** Web app pushes a (usually encrypted) backup snapshot for durable storage. */
+  backupSnapshot: "WORKDAYZ_BACKUP_SNAPSHOT",
+  backupSnapshotStored: "WORKDAYZ_BACKUP_SNAPSHOT_STORED",
+  /** Web app asks how fresh the stored snapshots are. */
+  requestBackupStatus: "WORKDAYZ_REQUEST_BACKUP_STATUS",
+  backupStatus: "WORKDAYZ_BACKUP_STATUS",
+  /** Web app asks for a stored snapshot's payload back, to restore from it. */
+  requestBackupSnapshot: "WORKDAYZ_REQUEST_BACKUP_SNAPSHOT",
+  backupSnapshotPayload: "WORKDAYZ_BACKUP_SNAPSHOT_PAYLOAD",
 } as const;
 
 // chrome.runtime message protocol between content scripts, popup, and background
@@ -237,7 +256,38 @@ export type RuntimeMessage =
   | { type: "RECORD_CONFIRMATION"; payload: ApplicationConfirmation }
   | { type: "GET_PENDING_CONFIRMATIONS" }
   | { type: "ACK_CONFIRMATIONS"; keys: string[] }
-  | { type: "CONFIRMATION_RELAY"; payload: ApplicationConfirmation };
+  | { type: "CONFIRMATION_RELAY"; payload: ApplicationConfirmation }
+  | { type: "STORE_BACKUP_SNAPSHOT"; payload: BackupSnapshot }
+  | { type: "GET_BACKUP_STATUS" }
+  | { type: "GET_BACKUP_SNAPSHOT"; createdAt?: string }
+  | { type: "SET_BACKUP_SETTINGS"; enabled?: boolean; intervalDays?: number }
+  | { type: "RUN_BACKUP_AUDIT" };
+
+/**
+ * A backup pushed by the web app. `payload` is a JSON string — the
+ * EncryptedBackup envelope when the user set a passphrase, otherwise the plain
+ * FullBackup. The extension never decrypts and never holds a passphrase; see
+ * background/backup-alarm.ts for why encryption happens web-side.
+ */
+export interface BackupSnapshot {
+  version: 1;
+  createdAt: string;
+  /** False means the user chose not to set a passphrase — surfaced in the UI. */
+  encrypted: boolean;
+  payload: string;
+  /** Counts for display, so the UI can describe a snapshot it cannot read. */
+  applications: number;
+  profiles: number;
+}
+
+/** Snapshot description without the payload — safe to hand to a page. */
+export interface BackupSnapshotMeta {
+  createdAt: string;
+  encrypted: boolean;
+  applications: number;
+  profiles: number;
+  bytes: number;
+}
 
 /** A submitted application, detected on a Workday confirmation page.
  * Mirrors content/confirmation.ts's ConfirmationEvent. */

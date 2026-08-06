@@ -77,3 +77,5 @@ jobs:
         run: npm run test:confirmation
       - name: Confirmation sync (dedupe + durable queue)
         run: npm run test:confirmation-sync
+      - name: Backup alarm (scheduling, rotation, staleness audit)
+        run: npm run test:backup

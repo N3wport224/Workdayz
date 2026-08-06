@@ -23,7 +23,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "scripting"],
+  "permissions": ["storage", "scripting", "alarms"],
   "commands": {
     "run-autofill": {
       "suggested_key": { "default": "Alt+Shift+F" },
