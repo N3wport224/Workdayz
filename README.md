@@ -111,6 +111,15 @@ track its status over time.
   extension popup ("Desired salary = 85000", one rule per line) plus a
   dedicated "How did you hear about us?" default; self-ID fields stay
   off-limits even via custom rules.
+- **Answer memory** — recurring screening questions ("years of experience",
+  "active clearance?", "salary expectations") are captured from applications
+  you've already filled and recalled on later ones. Matching normalizes case,
+  punctuation, and whitespace so the same question phrased differently by
+  another tenant still hits. Capture is one explicit click; recall is
+  automatic, and only ever writes into fields that are still empty — the
+  form's own prefill and anything you typed both win. Self-identification
+  questions are never captured and never recalled, enforced through the same
+  `isPersonalField` list the rest of the autofill uses.
 - **Multiple profiles** — keep separate resume profiles (e.g. analyst vs.
   ops roles) and switch between them; plus a demo profile to try the tool
   before importing your real resume, and a one-click "delete all my data"
@@ -289,7 +298,7 @@ GitHub Actions runs both halves on every push (`.github/workflows/ci.yml`):
 | Job | Steps |
 |-----|-------|
 | **Web app** | `tsc --noEmit`, `eslint`, 76 Vitest unit tests, `next build`, then four browser-driven suites: apply-page UI flows, full user journey, export/toolkit, and the a11y audit (LLM calls mocked) |
-| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard |
+| **Extension** | scope audit (must stay on `*.myworkdayjobs.com` only), `tsc --noEmit`, build, DOM-heuristics e2e against three fake Workday tenant fixtures, popup UI e2e, bridge-origin guard, answer-memory suite |
 
 ## Safety notes
 

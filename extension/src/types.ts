@@ -165,6 +165,10 @@ export const STORAGE_KEYS = {
   /** Item 60 — Record<hostname, string[]>: field labels the user never wants
    * autofilled on that tenant. */
   skipFields: "workdayz.skipFields",
+  /** Record<normalizedQuestion, RememberedAnswer> — screening answers captured
+   * from past applications and recalled on later ones. Never holds self-ID
+   * questions; see content/answer-memory.ts. */
+  answerMemory: "workdayz.answerMemory",
   /** Item 58 — Record<hostname, string[]>: the form-label fingerprint from
    * the last successful fill, to detect tenant DOM changes. */
   tenantFingerprints: "workdayz.tenantFingerprints",

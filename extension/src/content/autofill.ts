@@ -49,7 +49,10 @@ const PERSONAL_PATTERNS = [
   "sexual orientation", "lgbt", "self identify", "self-identify", "pronouns",
 ];
 
-function isPersonalField(label: string): boolean {
+/** Exported so answer-memory.ts enforces the SAME self-ID exclusion list.
+ * Two copies of PERSONAL_PATTERNS would drift and quietly rot the guarantee
+ * that self-identification questions are never automated. */
+export function isPersonalField(label: string): boolean {
   const lower = label.toLowerCase();
   return PERSONAL_PATTERNS.some((p) => lower.includes(p));
 }

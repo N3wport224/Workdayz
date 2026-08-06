@@ -4,6 +4,7 @@ import { applyAnswers, buildFieldReport, findQuestionFields, looksLikeApplicatio
 import { undoFill, fieldLabelText, setFieldValue, findFillableFields, type FillableElement } from "./dom-utils";
 import { addButton, mountWidget, escapeHtml } from "./widget";
 import { getSettings, diffFormVsProfile, getPageFillHistory, copyReportToClipboard, importFieldValuesFromText } from "./features";
+import { applyRememberedAnswers, captureAnswersFromPage, previewRememberedAnswers } from "./answer-memory";
 import { runEnhancedAutofill, previewEnhanced } from "./autofill-v2";
 
 // Workday's career sites are heavily client-rendered SPAs: content can
@@ -246,6 +247,12 @@ async function runAutofillNow(widget: import("./widget").Widget) {
   const result = await runEnhancedAutofill(source.pkg, await getCustomRules());
   completed++;
 
+  // Recall screening answers from past applications. Runs after the main pass
+  // so anything the package/custom rules already filled stays as-is — memory
+  // only ever writes into fields still empty.
+  const recalled = await applyRememberedAnswers();
+  if (recalled.filled.length) result.filled.push(...recalled.filled);
+
   if (source.pkg.experience.length > 0) {
     widget.showProgress("Work experience", completed, totalSections);
     completed++;
@@ -337,12 +344,14 @@ function initApplicationFormWidget() {
         return;
       }
       const preview = previewEnhanced(source.pkg, await getCustomRules());
+      const remembered = await previewRememberedAnswers();
       const parts = [
         `Would fill ${preview.wouldFill.length} text field(s) (highlighted with a dashed outline)`,
       ];
       if (preview.files.length) parts.push(`attach ${preview.files.join(" & ")}`);
       if (preview.experiencePanels) parts.push(`fill ${preview.experiencePanels} experience panel(s)`);
       if (preview.educationPanels) parts.push(`fill ${preview.educationPanels} education panel(s)`);
+      if (remembered.length) parts.push(`answer ${remembered.length} question(s) from memory`);
       widget.setStatus(
         `PREVIEW — ${parts.join(", ")}. Dropdowns and split dates resolve during the real fill. Nothing was changed.`,
       );
@@ -426,6 +435,31 @@ function initApplicationFormWidget() {
       widget.setStatus("The extension was updated — reload this page and try again.");
     } finally {
       answersBtn.disabled = false;
+    }
+  });
+
+  // Answer memory: capture is explicit (one click) rather than automatic —
+  // recall happens on its own during every fill, but silently storing whatever
+  // you type into an application isn't a default worth assuming.
+  const rememberBtn = addButton(widget.root, "💾 Remember answers on this page", async () => {
+    rememberBtn.disabled = true;
+    try {
+      const { saved, skipped } = await captureAnswersFromPage();
+      if (!saved.length) {
+        widget.setStatus(
+          skipped > 0
+            ? `Nothing saved — the question fields on this step are still empty (${skipped} checked). Answer them first, then click this again.`
+            : "No screening questions found on this step to remember.",
+        );
+        return;
+      }
+      widget.setStatus(
+        `Remembered ${saved.length} answer(s) for future applications: ${saved.slice(0, 2).join("; ")}${saved.length > 2 ? ` +${saved.length - 2} more` : ""}. Self-identification questions are never stored.`,
+      );
+    } catch {
+      widget.setStatus("The extension was updated — reload this page and try again.");
+    } finally {
+      rememberBtn.disabled = false;
     }
   });
 

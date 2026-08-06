@@ -12,6 +12,7 @@
     "test": "node test/run-e2e.mjs",
     "test:popup": "node test/popup-verify.mjs",
     "test:bridge-guard": "node test/bridge-origin-guard.test.mjs",
+    "test:answer-memory": "node test/answer-memory.test.mjs",
     "package": "npm run build && cd dist && zip -qr ../workdayz-extension.zip . -x '*.map' && cd .. && echo 'wrote workdayz-extension.zip'",
     "generate-icons": "node scripts/generate-icons.mjs"
   },

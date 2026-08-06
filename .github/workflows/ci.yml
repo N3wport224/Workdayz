@@ -71,3 +71,5 @@ jobs:
         run: npm run test:popup
       - name: Bridge-origin guard (never bridge onto a Workday domain)
         run: npm run test:bridge-guard
+      - name: Answer memory (recall + never remember self-ID questions)
+        run: npm run test:answer-memory
