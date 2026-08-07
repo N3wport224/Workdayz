@@ -15,7 +15,7 @@ import {
 } from "@/lib/storage";
 import { sendProfile, sendProfileList, getBridgeStatus, requestSyncStatus, onSyncStatus, onProfileStored } from "@/lib/extension-bridge";
 import { ResumeImportPanel } from "@/components/ResumeImportPanel";
-import type { ResumeProfile } from "@/lib/types";
+import type { CertificationEntry, ResumeProfile } from "@/lib/types";
 
 const emptyProfile: ResumeProfile = {
   contact: { firstName: "", lastName: "", email: "", phone: "", address: "", city: "", state: "", postalCode: "", country: "US", linkedin: "", website: "" },
@@ -121,6 +121,29 @@ export default function ProfilePage() {
 
   const removeExperience = (idx: number) => {
     setProfile((p) => ({ ...p, experience: p.experience.filter((_, i) => i !== idx) }));
+  };
+
+  // --- Certifications ---
+  const updateCertification = (idx: number, patch: Partial<CertificationEntry>) => {
+    setProfile((p) => {
+      const certs = [...p.certifications];
+      certs[idx] = { ...certs[idx], ...patch };
+      return { ...p, certifications: certs };
+    });
+  };
+
+  const addCertification = () => {
+    setProfile((p) => ({
+      ...p,
+      // Date.now() collides when two are added in the same millisecond, which
+      // duplicates React keys and makes the wrong row edit; the index suffix
+      // keeps ids unique.
+      certifications: [...p.certifications, { id: `cert-${Date.now()}-${p.certifications.length}`, name: "" }],
+    }));
+  };
+
+  const removeCertification = (idx: number) => {
+    setProfile((p) => ({ ...p, certifications: p.certifications.filter((_, i) => i !== idx) }));
   };
 
   /** Shapes a web-app ResumeProfile into the slimmer BaseProfile the
@@ -652,6 +675,72 @@ export default function ProfilePage() {
           className="text-sm text-blue-400 hover:underline"
         >
           + Add education
+        </button>
+      </div>
+
+      {/* Certifications. Imported certs previously had no UI at all — they were
+          parsed, synced, and autofilled, but invisible and uneditable here. */}
+      <div className="card">
+        <h2 className="font-semibold mb-1">Certifications ({profile.certifications.length})</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Autofilled into Workday&apos;s Certifications/Licenses section. Dates use MM/YYYY;
+          leave Expires blank if the credential doesn&apos;t expire.
+        </p>
+        {profile.certifications.map((cert, i) => (
+          <div key={cert.id} className="grid grid-cols-2 gap-3 mb-4 p-3 border border-gray-700 rounded-lg">
+            <div>
+              <label htmlFor={`cert-name-${i}`}>Name</label>
+              <input
+                id={`cert-name-${i}`}
+                aria-label={`Certification ${i + 1} name`}
+                value={cert.name}
+                placeholder="AWS Certified Solutions Architect"
+                onChange={(e) => updateCertification(i, { name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label htmlFor={`cert-issuer-${i}`}>Issuer</label>
+              <input
+                id={`cert-issuer-${i}`}
+                aria-label={`Certification ${i + 1} issuer`}
+                value={cert.issuer ?? ""}
+                placeholder="Amazon Web Services"
+                onChange={(e) => updateCertification(i, { issuer: e.target.value })}
+              />
+            </div>
+            <div>
+              <label htmlFor={`cert-issued-${i}`}>Issued</label>
+              <input
+                id={`cert-issued-${i}`}
+                aria-label={`Certification ${i + 1} issue date`}
+                value={cert.issueDate ?? ""}
+                placeholder="03/2024"
+                onChange={(e) => updateCertification(i, { issueDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label htmlFor={`cert-expires-${i}`}>Expires (optional)</label>
+              <input
+                id={`cert-expires-${i}`}
+                aria-label={`Certification ${i + 1} expiration date`}
+                value={cert.expirationDate ?? ""}
+                placeholder="03/2027"
+                onChange={(e) => updateCertification(i, { expirationDate: e.target.value })}
+              />
+            </div>
+            <div className="col-span-2 flex justify-end">
+              <button
+                onClick={() => removeCertification(i)}
+                aria-label={`Remove certification ${i + 1}`}
+                className="text-sm text-red-400 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        <button onClick={addCertification} className="text-sm text-blue-400 hover:underline">
+          + Add certification
         </button>
       </div>
 

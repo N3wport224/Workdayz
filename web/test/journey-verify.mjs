@@ -81,6 +81,72 @@ try {
   profileNames = await page.locator("#profileSwitcher option").allTextContents();
   check("deleting named profile removes it", !profileNames.includes("Warehouse resume"), JSON.stringify(profileNames));
 
+  // Certifications: the section had no UI at all — certs were parsed, synced
+  // and autofilled, but invisible and uneditable. Verify the round trip.
+  check(
+    "certifications section is rendered",
+    (await page.textContent("body")).includes("Certifications"),
+  );
+  const demoCertName = await page
+    .locator('input[aria-label="Certification 1 name"]')
+    .inputValue()
+    .catch(() => "");
+  check("demo profile's certifications are visible and populated", demoCertName.length > 0, `got "${demoCertName}"`);
+
+  const certRowsBefore = await page.locator('input[aria-label$="name"][id^="cert-name-"]').count();
+  await page.click("text=+ Add certification");
+  await page.waitForTimeout(150);
+  check(
+    "add certification appends a row",
+    (await page.locator('input[id^="cert-name-"]').count()) === certRowsBefore + 1,
+  );
+
+  await page.fill(`#cert-name-${certRowsBefore}`, "CompTIA Security+");
+  await page.fill(`#cert-issuer-${certRowsBefore}`, "CompTIA");
+  await page.fill(`#cert-issued-${certRowsBefore}`, "05/2025");
+  await page.click("text=Save profile");
+  await page.waitForTimeout(300);
+  const certsSaved = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("workdayz-profile") ?? "null")?.certifications ?? [],
+  );
+  const added = certsSaved.find((c) => c.name === "CompTIA Security+");
+  check("edited certification persists with its issuer and date", added?.issuer === "CompTIA" && added?.issueDate === "05/2025", JSON.stringify(added));
+
+  await page.click(`button[aria-label="Remove certification ${certRowsBefore + 1}"]`);
+  await page.waitForTimeout(150);
+  check(
+    "remove certification drops the row",
+    (await page.locator('input[id^="cert-name-"]').count()) === certRowsBefore,
+  );
+
+  // A profile saved before certifications became structured holds bare strings.
+  // Un-coerced, the name inputs render blank and the next save writes back a
+  // mix of strings and objects — silent corruption rather than a loud failure.
+  await page.evaluate(() => {
+    const raw = JSON.parse(localStorage.getItem("workdayz-profile"));
+    raw.certifications = ["Legacy String Cert", "Second Legacy"];
+    localStorage.setItem("workdayz-profile", JSON.stringify(raw));
+    localStorage.removeItem("workdayz-profiles");
+  });
+  await page.reload();
+  await page.waitForSelector("text=Resume Profile");
+  const legacyName = await page
+    .locator('input[aria-label="Certification 1 name"]')
+    .inputValue()
+    .catch(() => "");
+  check("legacy string certifications render with their names", legacyName === "Legacy String Cert", `got "${legacyName}"`);
+
+  await page.click("text=Save profile");
+  await page.waitForTimeout(300);
+  const migrated = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("workdayz-profile") ?? "null")?.certifications ?? [],
+  );
+  check(
+    "saving a legacy profile writes back structured entries, not strings",
+    migrated.length === 2 && migrated.every((c) => typeof c === "object" && typeof c.name === "string" && c.id),
+    JSON.stringify(migrated),
+  );
+
   // References section + skill add
   await page.fill('input[placeholder="Type a skill and press Enter"]', "Forecasting");
   await page.press('input[placeholder="Type a skill and press Enter"]', "Enter");

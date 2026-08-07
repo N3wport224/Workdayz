@@ -3,7 +3,7 @@
  * applications, and settings. In production this would be a database.
  */
 
-import type { ResumeProfile, TailoredApplication } from "./types";
+import type { CertificationEntry, ResumeProfile, TailoredApplication } from "./types";
 
 const PROFILE_KEY = "workdayz-profile";
 const APPLICATIONS_KEY = "workdayz-applications";
@@ -40,10 +40,46 @@ export function saveProfile(profile: ResumeProfile): void {
   }
 }
 
+/**
+ * Certifications used to be `string[]`; they became structured
+ * `CertificationEntry` objects. A profile saved before that upgrade still holds
+ * bare strings in localStorage, and nothing has ever normalized them on read —
+ * harmless while no UI touched certifications, but any code doing `cert.name`
+ * would render blanks and then write mixed garbage back on the next save.
+ *
+ * Coerces on load so the rest of the app can rely on the structured shape.
+ * Exported for tests.
+ */
+export function normalizeCertifications(value: unknown): CertificationEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry, i): CertificationEntry | null => {
+      if (typeof entry === "string") {
+        const name = entry.trim();
+        return name ? { id: `cert-legacy-${i}`, name } : null;
+      }
+      if (entry && typeof entry === "object") {
+        const e = entry as Partial<CertificationEntry>;
+        const name = typeof e.name === "string" ? e.name : "";
+        // An id may be missing on hand-edited or older structured data; React
+        // keys and the edit handlers both need a stable one.
+        return { ...e, id: e.id || `cert-${i}`, name };
+      }
+      return null;
+    })
+    .filter((c): c is CertificationEntry => c !== null);
+}
+
+/** Applies shape fixes a stored profile may predate. */
+function normalizeProfile(profile: ResumeProfile): ResumeProfile {
+  return { ...profile, certifications: normalizeCertifications(profile?.certifications) };
+}
+
 export function loadProfile(): ResumeProfile | null {
   try {
     const data = localStorage.getItem(PROFILE_KEY);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    return normalizeProfile(JSON.parse(data) as ResumeProfile);
   } catch {
     return null;
   }
@@ -58,7 +94,13 @@ const ACTIVE_PROFILE_KEY = "workdayz-active-profile";
 function loadProfileMap(): Record<string, ResumeProfile> {
   try {
     const raw = localStorage.getItem(PROFILES_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, ResumeProfile>) : {};
+    const parsed = raw ? (JSON.parse(raw) as Record<string, ResumeProfile>) : {};
+    // Second read path for stored profiles, so it needs the same legacy
+    // certification coercion loadProfile does — switchProfile reads from here.
+    const map: Record<string, ResumeProfile> = {};
+    for (const [name, profile] of Object.entries(parsed)) {
+      if (profile) map[name] = normalizeProfile(profile);
+    }
     // First run: migrate the single legacy profile into the map.
     if (Object.keys(map).length === 0) {
       const single = loadProfile();
